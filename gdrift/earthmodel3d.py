@@ -3,6 +3,7 @@ import numpy as np
 from .constants import R_cmb, R_earth
 from .io import load_dataset
 from scipy.spatial import cKDTree
+from .utility import enlist
 
 
 class EarthModel3D(ABC):
@@ -73,7 +74,8 @@ class EarthModel3D(ABC):
         z = np.atleast_1d(z)
 
         if not self.check_quantity(label):
-            raise ValueError(f"Quantity '{label}' is not available in the model.")
+            raise ValueError(
+                f"Quantity '{label}' is not available in the model.")
 
         if not self.check_extent(x, y, z):
             raise ValueError("Coordinates are out of the model's extent.")
@@ -83,10 +85,72 @@ class EarthModel3D(ABC):
     def _load_fields(self, labels=[]):
         pass
 
-
     @abstractmethod
     def _interpolate_to_points(self, label, coords):
         pass
+
+
+class SeismicEarthModel3D(EarthModel3D):
+    # Hard coding a minium distance, below which we do not interpolate
+    minimum_distance = 1e-3
+    # Hard coding a longest distance beyond which we don't have access to data
+    maximum_distance = 200e3
+
+    def __init__(self, model_name, labels=[]):
+        super().__init__()
+        self.model_name = model_name
+        self._load_fields(labels=labels)
+        self.tree_is_created = False
+
+    def check_extent(self, x, y, z, tolerance=1e-3):
+        radius = np.sqrt(x**2 + y**2 + z**2)
+
+        return (all(radius >= REVEALSeismicModel3D.rmin - tolerance)
+                and all(radius <= REVEALSeismicModel3D.rmax + tolerance))
+
+    def _interpolate_to_points(self, label, coordinates, k=20):
+        # Making sure we have a list of items
+        label = enlist(label)
+
+        # Making sure
+        if label not in self.available_fields.keys():
+            raise ValueError(f"{label} does not exist for model {self.model_name}")
+
+        # generate the KDTree only if it has not been created already.
+        if not self.tree_is_created:
+            self.tree = cKDTree(self.coordinates)
+            self.tree_is_created = True
+
+        # finding the nearest k points
+        dists, inds = self.tree.query(coordinates, k=k)
+
+        safe_dists = np.where(dists < REVEALSeismicModel3D.minimum_distance,
+                              dists, REVEALSeismicModel3D.minimum_distance)
+        replace_flg = dists[:, 0] < REVEALSeismicModel3D.minimum_distance
+
+        if len(self.available_fields[label].shape) > 1:
+            ret = np.einsum("i, ik -> ik", np.sum(1/safe_dists, axis=1), np.einsum(
+                "ij, ijk -> ik", 1/safe_dists, self.available_fields[label][inds]))
+            ret[replace_flg, :] = self.available_fields[label][inds[replace_flg, 0], :]
+        else:
+            ret = np.einsum("ij, ij->i", 1/safe_dists,
+                            self.available_fields[label][inds]) / np.sum(1/safe_dists, axis=1)
+            ret[replace_flg] = self.available_fields[label][inds[replace_flg, 0]]
+        return ret
+
+    def _load_fields(self, labels=[]):
+        data = load_dataset(self.model_name)
+        if len(labels) > 0:
+            for label in labels:
+                if label not in data.keys():
+                    raise ValueError(
+                        f"{label} not present in tomography model: {self.model_name}")
+
+        if "coordinates" not in labels:
+            labels += ["coordinates"]
+
+        for key in data.keys() if len(labels) == 1 else labels:
+            self.add_quantity(key, data[key])
 
 
 class REVEALSeismicModel3D(EarthModel3D):
@@ -94,6 +158,7 @@ class REVEALSeismicModel3D(EarthModel3D):
     rmin = R_cmb
     rmax = R_earth
     minimum_distance = 1e-3
+
     def __init__(self, labels=[]):
         super().__init__()
         self._load_fields(labels=labels)
@@ -102,25 +167,27 @@ class REVEALSeismicModel3D(EarthModel3D):
     def check_extent(self, x, y, z, tolerance=1e-3):
         radius = np.sqrt(x**2 + y**2 + z**2)
 
-        return (all( radius >= REVEALSeismicModel3D.rmin - tolerance)
-            and all( radius <= REVEALSeismicModel3D.rmax + tolerance))
+        return (all(radius >= REVEALSeismicModel3D.rmin - tolerance)
+                and all(radius <= REVEALSeismicModel3D.rmax + tolerance))
 
     def _interpolate_to_points(self, label, coordinates, k=8):
         if not self.tree_is_created:
             self.tree = cKDTree(self.coordinates)
 
         dists, inds = self.tree.query(coordinates, k=k)
-        safe_dists = np.where(dists<REVEALSeismicModel3D.minimum_distance, dists, REVEALSeismicModel3D.minimum_distance)
+        safe_dists = np.where(dists < REVEALSeismicModel3D.minimum_distance,
+                              dists, REVEALSeismicModel3D.minimum_distance)
         replace_flg = dists[:, 0] < REVEALSeismicModel3D.minimum_distance
 
         if len(self.available_fields[label].shape) > 1:
-            ret = np.einsum("i, ik -> ik", np.sum(1/safe_dists, axis=1), np.einsum("ij, ijk -> ik", 1/safe_dists, self.available_fields[label][inds]))
+            ret = np.einsum("i, ik -> ik", np.sum(1/safe_dists, axis=1), np.einsum(
+                "ij, ijk -> ik", 1/safe_dists, self.available_fields[label][inds]))
             ret[replace_flg, :] = self.available_fields[label][inds[replace_flg, 0], :]
         else:
-            ret = np.einsum("ij, ij->i", 1/safe_dists, self.available_fields[label][inds])/ np.sum(1/safe_dists, axis=1)
+            ret = np.einsum("ij, ij->i", 1/safe_dists,
+                            self.available_fields[label][inds]) / np.sum(1/safe_dists, axis=1)
             ret[replace_flg] = self.available_fields[label][inds[replace_flg, 0]]
         return ret
-
 
     def _load_fields(self, labels=[]):
         reveal_data = load_dataset(REVEALSeismicModel3D.fi_name)
