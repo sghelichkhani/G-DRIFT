@@ -59,6 +59,7 @@ class CammaranoAnelasticityModel(BaseAnelasticityModel):
         self.a = a
         self.omega = omega
         self.solidus = solidus
+        self.Q_bulk = Q_bulk
 
     def compute_Q_shear(self, depths, temperatures):
         """
@@ -88,21 +89,22 @@ class CammaranoAnelasticityModel(BaseAnelasticityModel):
             depths (_type_): _description_
             temperatures (_type_): _description_
         """
+        return self.Q_bulk(depths)
 
 
 def apply_anelastic_correction(thermo_model, anelastic_model):
     """
-    Apply anelastic corrections to seismic velocity data using provided anelasticity model.
+    Apply anelastic corrections to seismic velocity data using provided "anelastic_model".
     within the low attenuation limit. For corrections we use the equation:
         $1 - \frac{V(anelastic)}{V(elastic)} = \frac{1}{2} cot(\frac{\alpha \pi}{2}) Q^{-1}$
-    as described by Stixrude & Lithgow-Bertelloni 2005 JGR (doi:10.1029/2004JB002965, see equation 10)
+    as described by Stixrude & Lithgow-Bertelloni (doi:10.1029/2004JB002965, Eq-10)
 
     Args:
         thermo_model (ThermodynamicModel): The thermodynamic model with temperature and depth data.
         anelastic_model (BaseAnelasticityModel): An anelasticity model to compute Q values.
 
     Returns:
-        Corrected ThermodynamicModel with anelastic effects.
+        Corrected ThermodynamicModel, including anelastic effects.
     """
     class ThermodynamicModelPrime(thermo_model.__class__):
         def __init__(self, *args, **kwargs):
@@ -156,22 +158,22 @@ def apply_anelastic_correction(thermo_model, anelastic_model):
             swave_speed_table = super().compute_swave_speed()
 
             # Compute L
-            L = 4 / 3 * (pwave_speed_table/swave_speed_table) ** 2
+            L = 4 / 3 * (pwave_speed_table.get_vals()/swave_speed_table.get_vals()) ** 2
 
             # Meshing depths and temperatures of the anharmonic model to get all combinations
             depths_x, temperatures_x = numpy.meshgrid(
                 pwave_speed_table.get_x(), pwave_speed_table.get_y(), indexing="ij")
 
             # computing Q_matrix for compressional wave
-            Q_matrix = (
+            Q_matrix_inv = (
                 L / anelastic_model.compute_Q_shear(depths_x, temperatures_x)
-                + (1-L) / anelastic_model.compute_Q_bulk(depths_x, temperatures_x)
+                + (1 - L) / anelastic_model.compute_Q_bulk(depths_x, temperatures_x)
             )
 
             # Apply anelastic correction
             corrected_vals = (
                 pwave_speed_table.get_vals() *
-                (1 - 0.5/numpy.tan(anelastic_model.a(depths_x) * numpy.pi / 2) / Q_matrix)
+                (1 - 0.5/numpy.tan(anelastic_model.a(depths_x) * numpy.pi / 2) * Q_matrix_inv)
             )
 
             # return the anelastically corrected table
