@@ -109,21 +109,34 @@ def apply_anelastic_correction(thermo_model, anelastic_model):
             super().__init__(*args, **kwargs)
 
         def compute_swave_speed(self):
+            """_summary_
+
+            Returns:
+                _type_: _description_
+            """
+            #
             swave_speed_table = super().compute_swave_speed()
             depths_x, temperatures_x = numpy.meshgrid(
                 swave_speed_table.get_x(),
                 swave_speed_table.get_y(),
                 indexing="ij")
-            Q_shear_matrix = anelastic_model.compute_Q_shear(
+
+            # For shear wave velocity Q = Q_\mu
+            Q_matrix = anelastic_model.compute_Q_shear(
                 depths_x, temperatures_x)
-            F = calculate_F(anelastic_model.a(depths_x))
-            corrected_vals = swave_speed_table.get_vals(
-            ) * (1 - (F / (numpy.pi * anelastic_model.a(depths_x))) * 1/Q_shear_matrix)
+
+            # Anelastically corrected shear wave values
+            corrected_vals = (
+                swave_speed_table.get_vals()
+                * (1 - 0.5/numpy.tan(anelastic_model.a(depths_x) * numpy.pi / 2) / Q_matrix)
+            )
+
+            # ) * (1 - (F / (numpy.pi * anelastic_model.a(depths_x))) * 1/Q_shear_matrix)
             return type(swave_speed_table)(
                 x=swave_speed_table.get_x(),
                 y=swave_speed_table.get_y(),
                 vals=corrected_vals,
-                name=f"{swave_speed_table.get_name()}_anelastic_correction"
+                name=f"{swave_speed_table.get_name()}_anelastically_corrected"
             )
 
         def compute_pwave_speed(self):
@@ -155,13 +168,10 @@ def apply_anelastic_correction(thermo_model, anelastic_model):
                 + (1-L) / anelastic_model.compute_Q_bulk(depths_x, temperatures_x)
             )
 
-            # Calculate the frequency dependence factor "F"
-            F = calculate_F(anelastic_model.a(depths_x))
-
             # Apply anelastic correction
             corrected_vals = (
                 pwave_speed_table.get_vals() *
-                (1 - (F / (numpy.pi * anelastic_model.a(depths_x))) * 1/Q_matrix)
+                (1 - 0.5/numpy.tan(anelastic_model.a(depths_x) * numpy.pi / 2) / Q_matrix)
             )
 
             # return the anelastically corrected table
@@ -178,7 +188,3 @@ def apply_anelastic_correction(thermo_model, anelastic_model):
         thermo_model.get_temperatures(),
         thermo_model.get_depths()
     )
-
-
-def calculate_F(alpha):
-    return ((numpy.pi*alpha)/2)*(1/numpy.tan(numpy.pi*alpha/2))
