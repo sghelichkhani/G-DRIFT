@@ -43,7 +43,8 @@ def build_anelasticity_model(solidus):
     def g(x): return np.where(x < 660e3, 20, 10)
     def a(x): return 0.2
     def omega(x): return 1.0
-    return gdrift.CammaranoAnelasticityModel(B, g, a, solidus, omega)
+    def Q_kappa(x): return np.where(x < 660e3, 1e3, 1e4)
+    return gdrift.CammaranoAnelasticityModel(B=B, g=g, a=a, solidus=solidus, Q_bulk=Q_kappa, omega=omega)
 
 
 # Load PREM
@@ -51,14 +52,16 @@ prem = gdrift.PreliminaryRefEarthModel()
 
 # Thermodynamic model
 slb_pyrolite = gdrift.ThermodynamicModel("SLB_16", "pyrolite")
-pyrolite_elastic_speed = slb_pyrolite.compute_swave_speed()
+pyrolite_elastic_s_speed = slb_pyrolite.compute_swave_speed()
+pyrolite_elastic_p_speed = slb_pyrolite.compute_pwave_speed()
 
 # building solidus model
 solidus_ghelichkhan = build_solidus()
 anelasticity = build_anelasticity_model(solidus_ghelichkhan)
 anelastic_slb_pyrolite = gdrift.apply_anelastic_correction(
     slb_pyrolite, anelasticity)
-pyrolite_anelastic_speed = anelastic_slb_pyrolite.compute_swave_speed()
+pyrolite_anelastic_s_speed = anelastic_slb_pyrolite.compute_swave_speed()
+pyrolite_anelastic_p_speed = anelastic_slb_pyrolite.compute_pwave_speed()
 
 # contour lines to plot
 cntr_lines = np.linspace(4000, 7000, 20)
@@ -72,7 +75,7 @@ depths_x, temperatures_x = np.meshgrid(
     slb_pyrolite.get_depths(), slb_pyrolite.get_temperatures(), indexing="ij")
 img = []
 
-for id, table in enumerate([pyrolite_elastic_speed, pyrolite_anelastic_speed]):
+for id, table in enumerate([pyrolite_elastic_s_speed, pyrolite_anelastic_s_speed]):
     img.append(axes[id].contourf(
         temperatures_x,
         depths_x,
@@ -97,26 +100,56 @@ axes[1].text(0.5, 1.05, s="With Anelastic Correction",
 fig.colorbar(img[-1], ax=axes[0], cax=fig.add_axes([0.88,
              0.1, 0.02, 0.8]), orientation="vertical", label="Shear-Wave Speed [m/s]")
 
+
+# Figure 2:
+# Looking at a specific depth of shear seismic speed
 plt.close(2)
 fig_2 = plt.figure(num=2)
 ax_2 = fig_2.add_subplot(111)
 index = 100
-ax_2.plot(pyrolite_anelastic_speed.get_y(),
-          pyrolite_anelastic_speed.get_vals()[index, :], color="blue", label="With Anelastic Correction")
-ax_2.plot(pyrolite_anelastic_speed.get_y(),
-          pyrolite_elastic_speed.get_vals()[index, :], color="red", label="Elastic Model")
+ax_2.plot(pyrolite_anelastic_s_speed.get_y(),
+          pyrolite_anelastic_s_speed.get_vals()[index, :], color="blue", label="With Anelastic Correction")
+ax_2.plot(pyrolite_anelastic_s_speed.get_y(),
+          pyrolite_elastic_s_speed.get_vals()[index, :], color="red", label="Elastic Model")
 ax_2.vlines(
-    [solidus_ghelichkhan.at_depth(pyrolite_anelastic_speed.get_x()[index])],
-    ymin=pyrolite_anelastic_speed.get_vals()[index, :].min(),
-    ymax=pyrolite_anelastic_speed.get_vals()[index, :].max(),
+    [solidus_ghelichkhan.at_depth(pyrolite_anelastic_s_speed.get_x()[index])],
+    ymin=pyrolite_anelastic_s_speed.get_vals()[index, :].min(),
+    ymax=pyrolite_anelastic_s_speed.get_vals()[index, :].max(),
     color="grey", label="Solidus", alpha=0.5)
 
 ax_2.set_xlabel("Temperature[K]")
-ax_2.set_ylabel("Seismic-Wave Speed [m/s]")
+ax_2.set_ylabel("Shear Seismic-Wave Speed [m/s]")
 ax_2.text(
-    0.5, 1.05, s=f"At depth {pyrolite_anelastic_speed.get_x()[index]/1e3:.1f} [m]",
+    0.5, 1.05, s=f"At depth {pyrolite_anelastic_s_speed.get_x()[index]/1e3:.1f} [m]",
     ha="center", va="center",
     transform=ax_2.transAxes, bbox=dict(facecolor=(1.0, 1.0, 0.7)))
 ax_2.legend()
 ax_2.grid()
+plt.show()
+
+
+# Figure 3:
+# Looking at a specific depth of shear seismic speed
+plt.close(3)
+fig_3 = plt.figure(num=3)
+ax_3 = fig_3.add_subplot(111)
+index = 100
+ax_3.plot(pyrolite_anelastic_p_speed.get_y(),
+          pyrolite_anelastic_p_speed.get_vals()[index, :], color="blue", label="With Anelastic Correction")
+ax_3.plot(pyrolite_anelastic_p_speed.get_y(),
+          pyrolite_elastic_p_speed.get_vals()[index, :], color="red", label="Elastic Model")
+ax_3.vlines(
+    [solidus_ghelichkhan.at_depth(pyrolite_anelastic_p_speed.get_x()[index])],
+    ymin=pyrolite_anelastic_p_speed.get_vals()[index, :].min(),
+    ymax=pyrolite_anelastic_p_speed.get_vals()[index, :].max(),
+    color="grey", label="Solidus", alpha=0.5)
+
+ax_3.set_xlabel("Temperature[K]")
+ax_3.set_ylabel("Compressional Seismic-Wave Speed [m/s]")
+ax_3.text(
+    0.5, 1.05, s=f"At depth {pyrolite_anelastic_p_speed.get_x()[index]/1e3:.1f} [m]",
+    ha="center", va="center",
+    transform=ax_3.transAxes, bbox=dict(facecolor=(1.0, 1.0, 0.7)))
+ax_3.legend()
+ax_3.grid()
 plt.show()
