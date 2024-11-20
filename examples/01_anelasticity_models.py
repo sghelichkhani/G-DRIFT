@@ -6,19 +6,23 @@ from gdrift.profile import RadialProfileSpline
 # In this tutorial we show how with the given functionalities
 # we can apply anelastic correction to an existing thermodynamic table
 
-
 # For our anelastic model in this example we use the study by Cammerano et al.
+# The anelastic parameterisation is dependent on a solidus curve of the mantle.
+# To this end we use the two datasets by Andrault et al 2011 EPSL
+# And a solidus by a study by Hirschmann to build a combined solidus curve.
 
 
 def build_solidus():
     # Defining the solidus curve for manlte
+    # Andrault et al 2011
     andrault_solidus = gdrift.SolidusProfileFromFile(
         model_name="1d_solidus_Andrault_et_al_2011_EPSL",
         description="Andrault et al 2011 EPSL")
 
-    # Defining parameters for Cammarano style anelasticity model
+    # Hirsch solidus
     hirsch_solidus = gdrift.HirschmannSolidus()
 
+    # Combining the two
     my_depths = []
     my_solidus = []
     for solidus_model in [hirsch_solidus, andrault_solidus]:
@@ -27,9 +31,11 @@ def build_solidus():
         my_depths.extend(dpths)
         my_solidus.extend(solidus_model.at_depth(dpths))
 
+    # Avoding unnecessary extrapolation by setting the solidus temperature at maximum depth
     my_depths.extend([3000e3])
     my_solidus.extend([solidus_model.at_depth(dpths[-1])])
 
+    # building the solidu profile that was originally used by Ghelichkhan et al in their study
     ghelichkhan_et_al = RadialProfileSpline(
         depth=np.asarray(my_depths),
         value=np.asarray(my_solidus),
@@ -38,6 +44,9 @@ def build_solidus():
     return ghelichkhan_et_al
 
 
+# Now the anelasticiy model by Cammarano et al can be constructed.
+# Here we use B g a for making Q_\mu. and we provide a rough Q_\kappa
+# Provided by Goes et al.
 def build_anelasticity_model(solidus):
     def B(x): return np.where(x < 660e3, 1.1, 20)
     def g(x): return np.where(x < 660e3, 20, 10)
@@ -51,7 +60,7 @@ def build_anelasticity_model(solidus):
 prem = gdrift.PreliminaryRefEarthModel()
 
 # Thermodynamic model
-slb_pyrolite = gdrift.ThermodynamicModel("SLB_16", "pyrolite")
+slb_pyrolite = gdrift.ThermodynamicModel("SLB_16", "pyrolite", temps=np.linspace(300, 4000), depths=np.linspace(0, 2890e3))
 pyrolite_elastic_s_speed = slb_pyrolite.compute_swave_speed()
 pyrolite_elastic_p_speed = slb_pyrolite.compute_pwave_speed()
 
