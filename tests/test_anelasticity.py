@@ -1,7 +1,5 @@
 import numpy as np
-import pytest
 from gdrift.anelasticity import CammaranoAnelasticityModel, apply_anelastic_correction
-from gdrift.profile import RadialProfileSpline
 from gdrift import ThermodynamicModel
 
 # Mock solidus function
@@ -42,8 +40,7 @@ def test_cammarano_anelasticity_model():
 
     # Expected values based on mock parameters
     expected_Q_shear = model.B(depths) * (model.omega(depths) ** model.a(depths)) * np.exp(
-        (model.a(depths) * model.g(depths) *
-         mock_solidus.at_depth(depths)) / temperatures
+        (model.a(depths) * model.g(depths) * mock_solidus.at_depth(depths)) / temperatures
     )
 
     assert np.allclose(

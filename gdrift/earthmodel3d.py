@@ -83,7 +83,6 @@ class EarthModel3D(ABC):
     def _load_fields(self, labels=[]):
         pass
 
-
     @abstractmethod
     def _interpolate_to_points(self, label, coords):
         pass
@@ -94,6 +93,7 @@ class REVEALSeismicModel3D(EarthModel3D):
     rmin = R_cmb
     rmax = R_earth
     minimum_distance = 1e-3
+
     def __init__(self, labels=[]):
         super().__init__()
         self._load_fields(labels=labels)
@@ -102,25 +102,23 @@ class REVEALSeismicModel3D(EarthModel3D):
     def check_extent(self, x, y, z, tolerance=1e-3):
         radius = np.sqrt(x**2 + y**2 + z**2)
 
-        return (all( radius >= REVEALSeismicModel3D.rmin - tolerance)
-            and all( radius <= REVEALSeismicModel3D.rmax + tolerance))
+        return all(radius >= REVEALSeismicModel3D.rmin - tolerance) and all(radius <= REVEALSeismicModel3D.rmax + tolerance)
 
     def _interpolate_to_points(self, label, coordinates, k=8):
         if not self.tree_is_created:
             self.tree = cKDTree(self.coordinates)
 
         dists, inds = self.tree.query(coordinates, k=k)
-        safe_dists = np.where(dists<REVEALSeismicModel3D.minimum_distance, dists, REVEALSeismicModel3D.minimum_distance)
+        safe_dists = np.where(dists < REVEALSeismicModel3D.minimum_distance, dists, REVEALSeismicModel3D.minimum_distance)
         replace_flg = dists[:, 0] < REVEALSeismicModel3D.minimum_distance
 
         if len(self.available_fields[label].shape) > 1:
-            ret = np.einsum("i, ik -> ik", np.sum(1/safe_dists, axis=1), np.einsum("ij, ijk -> ik", 1/safe_dists, self.available_fields[label][inds]))
+            ret = np.einsum("i, ik -> ik", np.sum(1 / safe_dists, axis=1), np.einsum("ij, ijk -> ik", 1 / safe_dists, self.available_fields[label][inds]))
             ret[replace_flg, :] = self.available_fields[label][inds[replace_flg, 0], :]
         else:
-            ret = np.einsum("ij, ij->i", 1/safe_dists, self.available_fields[label][inds])/ np.sum(1/safe_dists, axis=1)
+            ret = np.einsum("ij, ij->i", 1 / safe_dists, self.available_fields[label][inds]) / np.sum(1 / safe_dists, axis=1)
             ret[replace_flg] = self.available_fields[label][inds[replace_flg, 0]]
         return ret
-
 
     def _load_fields(self, labels=[]):
         reveal_data = load_dataset(REVEALSeismicModel3D.fi_name)

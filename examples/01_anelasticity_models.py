@@ -48,11 +48,20 @@ def build_solidus():
 # Here we use B g a for making Q_\mu. and we provide a rough Q_\kappa
 # Provided by Goes et al.
 def build_anelasticity_model(solidus):
-    def B(x): return np.where(x < 660e3, 1.1, 20)
-    def g(x): return np.where(x < 660e3, 20, 10)
-    def a(x): return 0.2
-    def omega(x): return 1.0
-    def Q_kappa(x): return np.where(x < 660e3, 1e3, 1e4)
+    def B(x):
+        return np.where(x < 660e3, 1.1, 20)
+
+    def g(x):
+        return np.where(x < 660e3, 20, 10)
+
+    def a(x):
+        return 0.2
+
+    def omega(x):
+        return 1.0
+
+    def Q_kappa(x):
+        return np.where(x < 660e3, 1e3, 1e4)
     return gdrift.CammaranoAnelasticityModel(B=B, g=g, a=a, solidus=solidus, Q_bulk=Q_kappa, omega=omega)
 
 
@@ -129,7 +138,7 @@ ax_2.vlines(
 ax_2.set_xlabel("Temperature[K]")
 ax_2.set_ylabel("Shear Seismic-Wave Speed [m/s]")
 ax_2.text(
-    0.5, 1.05, s=f"At depth {pyrolite_anelastic_s_speed.get_x()[index]/1e3:.1f} [m]",
+    0.5, 1.05, s=f"At depth {pyrolite_anelastic_s_speed.get_x()[index] / 1e3:.1f} [km]",
     ha="center", va="center",
     transform=ax_2.transAxes, bbox=dict(facecolor=(1.0, 1.0, 0.7)))
 ax_2.legend()
@@ -156,7 +165,7 @@ ax_3.vlines(
 ax_3.set_xlabel("Temperature[K]")
 ax_3.set_ylabel("Compressional Seismic-Wave Speed [m/s]")
 ax_3.text(
-    0.5, 1.05, s=f"At depth {pyrolite_anelastic_p_speed.get_x()[index]/1e3:.1f} [m]",
+    0.5, 1.05, s=f"At depth {pyrolite_anelastic_p_speed.get_x()[index] / 1e3:.1f} [km]",
     ha="center", va="center",
     transform=ax_3.transAxes, bbox=dict(facecolor=(1.0, 1.0, 0.7)))
 ax_3.legend()
