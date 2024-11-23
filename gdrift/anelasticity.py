@@ -88,7 +88,7 @@ class CammaranoAnelasticityModel(BaseAnelasticityModel):
         temperatures = numpy.asarray(temperatures)
 
         Q_values = (
-            self.B(depths) * (self.omega(depths)**self.a(depths)) * numpy.exp((self.a(depths) * self.g(depths) * self.solidus(depths)) / temperatures)
+            self.B(depths) * (self.omega(depths)**self.a(depths)) * numpy.exp((self.a(depths) * self.g(depths) * self.solidus.at_depth(depths)) / temperatures)
         )
 
         return Q_values
