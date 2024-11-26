@@ -1,5 +1,5 @@
 from .constants import R_earth, R_cmb
-from .earthmodel3d import SeismicEarthModel3D
+from .earthmodel3d import EarthModel3D
 from .io import load_dataset, create_dataset_file
 from .mineralogy import ThermodynamicModel, compute_pwave_speed, compute_swave_speed
 from .anelasticity import CammaranoAnelasticityModel, apply_anelastic_correction

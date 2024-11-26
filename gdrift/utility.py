@@ -28,9 +28,9 @@ def compute_mass(radius, density):
 
     mass_enclosed = numpy.zeros_like(radius)
     for i in range(1, len(radius)):
-        shell_volume = 4/3 * numpy.pi * (radius[i]**3 - radius[i-1]**3)
-        average_density = (density[i] + density[i-1]) / 2
-        mass_enclosed[i] = mass_enclosed[i-1] + shell_volume * average_density
+        shell_volume = 4 / 3 * numpy.pi * (radius[i]**3 - radius[i - 1]**3)
+        average_density = (density[i] + density[i - 1]) / 2
+        mass_enclosed[i] = mass_enclosed[i - 1] + shell_volume * average_density
     return mass_enclosed
 
 
@@ -66,11 +66,11 @@ def compute_pressure(radius, density, gravity):
         numpy.ndarray: Array of pressures calculated from the surface inward to each radius.
     """
     pressure = numpy.zeros_like(radius)
-    for i in range(len(radius)-2, -1, -1):
-        dr = radius[i+1] - radius[i]
-        avg_density = (density[i] + density[i+1]) / 2
-        avg_gravity = (gravity[i] + gravity[i+1]) / 2
-        pressure[i] = pressure[i+1] + avg_density * avg_gravity * dr
+    for i in range(len(radius) - 2, -1, -1):
+        dr = radius[i + 1] - radius[i]
+        avg_density = (density[i] + density[i + 1]) / 2
+        avg_gravity = (gravity[i] + gravity[i + 1]) / 2
+        pressure[i] = pressure[i + 1] + avg_density * avg_gravity * dr
     return pressure
 
 
@@ -238,7 +238,7 @@ def fibonacci_sphere(n):
 
     phi = numpy.pi * (3. - numpy.sqrt(5.))  # golden angle in radians
 
-    y = 1 - (numpy.arange(n)/(n-1)) * 2
+    y = 1 - (numpy.arange(n) / (n - 1)) * 2
     radius = numpy.sqrt(1 - y * y)
     theta = phi * numpy.arange(n)
     x = numpy.cos(theta) * radius
@@ -259,3 +259,85 @@ def enlist(obj):
         return obj
     else:
         return [obj]
+
+
+def interpolate_to_points(values, distances, inds, min_distance=1e-6):
+    """
+    Interpolate field data to given query points using weighted averaging.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        Array of shape (n, ...) containing the field data to interpolate from.
+    distances : np.ndarray
+        Array of shape (n, k) containing the distances to the k nearest neighbors.
+    inds : np.ndarray
+        Array of shape (n, k) containing the indices of the k nearest neighbors.
+    min_distance : float, optional
+        Minimum distance to avoid division by zero. Default is 1e-6.
+
+    Returns
+    -------
+    np.ndarray
+        Interpolated field data at the query points.
+    """
+    safe_dists = numpy.where(distances < min_distance, min_distance, distances)
+    replace_flg = distances[:, 0] < min_distance
+
+    if len(values.shape) > 1:
+        weights = 1 / safe_dists
+        weighted_sum = numpy.einsum("ij, ijk -> ik", weights, values[inds])
+        ret = weighted_sum / numpy.sum(weights, axis=1)[:, numpy.newaxis]
+        ret[replace_flg, :] = values[inds[replace_flg, 0], :]
+    else:
+        weights = 1 / safe_dists
+        weighted_sum = numpy.einsum("ij, ij -> i", weights, values[inds])
+        ret = weighted_sum / numpy.sum(weights, axis=1)
+        ret[replace_flg] = values[inds[replace_flg, 0]]
+
+    return ret
+
+
+def create_labeled_array(data_dict, labels):
+    """
+    Create a labeled array from a dictionary of arrays and a list of labels.
+
+    Args:
+        data_dict (dict): Dictionary where keys are labels and values are arrays of length n.
+        labels (list): List of strings representing the labels.
+
+    Returns:
+        numpy.ndarray: Array of shape (n, m) where m is the number of labels.
+    """
+    n = len(next(iter(data_dict.values())))
+    m = len(labels)
+    labeled_array = numpy.zeros((n, m))
+
+    for i, label in enumerate(labels):
+        if label in data_dict:
+            labeled_array[:, i] = data_dict[label]
+        else:
+            raise ValueError(f"Label '{label}' not found in data dictionary.")
+
+    return labeled_array
+
+
+def create_data_dict(labeled_array, labels):
+    """
+    Create a dictionary of arrays from a labeled array and a list of labels.
+
+    Args:
+        labeled_array (numpy.ndarray): Array of shape (n, m) where m is the number of labels.
+        labels (list): List of strings representing the labels.
+
+    Returns:
+        dict: Dictionary where keys are labels and values are arrays of length n.
+    """
+    if labeled_array.shape[1] != len(labels):
+        raise ValueError("Number of columns in labeled_array must match the number of labels.")
+
+    data_dict = {}
+    for i, label in enumerate(labels):
+        data_dict[label] = labeled_array[:, i]
+
+    return data_dict

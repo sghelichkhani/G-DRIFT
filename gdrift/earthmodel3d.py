@@ -1,22 +1,74 @@
 from abc import ABC, abstractmethod
+from typing import List, Union
 import numpy as np
 from .constants import R_cmb, R_earth
 from .io import load_dataset
 from scipy.spatial import cKDTree
-from .utility import enlist
+from .utility import enlist, interpolate_to_points, create_labeled_array, create_data_dict
 
 
-class EarthModel3D(ABC):
+class AbstractEarthModel(ABC):
+    """
+    Abstract base class for Earth models.
+
+    Attributes:
+        coordinates (None): Placeholder for coordinates, to be defined in subclasses.
+        available_fields (dict): Dictionary to store available fields with their labels.
+
+    Methods:
+        at(label, *args):
+            Abstract method to provide the value of a model for a certain label at point(s).
+
+        check_quantity(quantity):
+            Abstract method to check if a quantity is available in the model.
+
+        check_extent(x, y, z):
+            Abstract method to check if the given coordinates are within the model's extent.
+    """
+    @abstractmethod
+    def at(self, label: str, *args):
+        """ abstract functiont hat provides the value of a model for a certain label at point(s).
+        """
+        pass
+
+    @abstractmethod
+    def check_quantity(self, quantity: str):
+        """ Placeholder for checking if a quantity is available in the model.
+
+        Args:
+            quantity (str): the name of the quantity to check
+        """
+        pass
+
+    @abstractmethod
+    def check_extent(self, *args):
+        """ Placeholder for checking if the given coordinates are within the model's extent.
+
+
+        Args:
+            x, y, z (float or np.array): the coordinates to check
+        """
+        pass
+
+
+class EarthModel3D(AbstractEarthModel):
+    # Hard coding the number of nearest neighbors to interpolate from
+    nearest_neighbours = 8
+
     def __init__(self):
-        """
-        Initialize the Earth model with a given extent.
-
-        Parameters:
-        extent (tuple): A tuple of tuples representing the minimum and maximum
-                        coordinates ((x_min, x_max), (y_min, y_max), (z_min, z_max)).
-        """
         self.coordinates = None
         self.available_fields = {}
+        self.tree = None
+
+    def set_coordinates(self, *args, max_distance=200e3):
+        """
+        Set the coordinates for the model.
+
+        Parameters:
+        coordinates (np.array): The coordinates to set.
+        max_distance (float): The maximum distance beyond which we will raise a fat ass warning.
+        """
+        self.coordinates = np.column_stack(args)
 
     def add_quantity(self, label, field):
         """
@@ -25,10 +77,7 @@ class EarthModel3D(ABC):
         Parameters:
         quantity (str): The name of the quantity to add.
         """
-        if label == "coordinates":
-            self.coordinates = field[:]
-        else:
-            self.available_fields[label] = field
+        self.available_fields[label] = field
 
     def check_quantity(self, quantity):
         """
@@ -42,8 +91,7 @@ class EarthModel3D(ABC):
         """
         return quantity in self.available_fields.keys()
 
-    @abstractmethod
-    def check_extent(self, x, y, z):
+    def check_extent(self, coordinates):
         """
         Check if the given coordinates are within the model's extent.
 
@@ -55,7 +103,7 @@ class EarthModel3D(ABC):
         """
         pass
 
-    def at(self, x, y, z, label):
+    def at(self, label: Union[str, List[str]], coordinates: np.array):
         """
         Get the value of a quantity at the specified coordinates.
 
@@ -69,28 +117,31 @@ class EarthModel3D(ABC):
         Raises:
         ValueError: If the quantity is not available or the coordinates are out of bounds.
         """
-        x = np.atleast_1d(x)
-        y = np.atleast_1d(y)
-        z = np.atleast_1d(z)
+        # checking if the quantity is available
+        self.check_quantity(label)
+        # checking if the coordinates are within the model's extent
+        self.check_extent(coordinates)
 
-        if not self.check_quantity(label):
-            raise ValueError(
-                f"Quantity '{label}' is not available in the model.")
+        if self.coordinates is None:
+            raise ValueError("Coordinates not set for the model")
 
-        if not self.check_extent(x, y, z):
-            raise ValueError("Coordinates are out of the model's extent.")
-        return self._interpolate_to_points(label, np.column_stack((x, y, z)))
+        # If the KDtree is not created, create it
+        if self.tree is None:
+            self.tree = cKDTree(self.coordinates)
 
-    @abstractmethod
-    def _load_fields(self, labels=[]):
-        pass
+        # Finding the nearest points and the indices
+        distances, indices = self.tree.query(coordinates, k=EarthModel3D.nearest_neighbours)
 
-    @abstractmethod
-    def _interpolate_to_points(self, label, coords):
-        pass
+        # Interpolating the values to the points
+        res_dictionary = interpolate_to_points(
+            create_labeled_array(self.available_fields, enlist(label)),
+            distances,
+            indices)
+
+        return res_dictionary
 
 
-class SeismicEarthModel3D(EarthModel3D):
+class SeismicEarthModel(EarthModel3D):
     # Hard coding a minium distance, below which we do not interpolate
     minimum_distance = 1e-3
     # Hard coding a longest distance beyond which we don't have access to data
@@ -129,12 +180,12 @@ class SeismicEarthModel3D(EarthModel3D):
         replace_flg = dists[:, 0] < REVEALSeismicModel3D.minimum_distance
 
         if len(self.available_fields[label].shape) > 1:
-            ret = np.einsum("i, ik -> ik", np.sum(1/safe_dists, axis=1), np.einsum(
-                "ij, ijk -> ik", 1/safe_dists, self.available_fields[label][inds]))
+            ret = np.einsum("i, ik -> ik", np.sum(1 / safe_dists, axis=1), np.einsum(
+                "ij, ijk -> ik", 1 / safe_dists, self.available_fields[label][inds]))
             ret[replace_flg, :] = self.available_fields[label][inds[replace_flg, 0], :]
         else:
-            ret = np.einsum("ij, ij->i", 1/safe_dists,
-                            self.available_fields[label][inds]) / np.sum(1/safe_dists, axis=1)
+            ret = np.einsum("ij, ij->i", 1 / safe_dists,
+                            self.available_fields[label][inds]) / np.sum(1 / safe_dists, axis=1)
             ret[replace_flg] = self.available_fields[label][inds[replace_flg, 0]]
         return ret
 
@@ -180,12 +231,12 @@ class REVEALSeismicModel3D(EarthModel3D):
         replace_flg = dists[:, 0] < REVEALSeismicModel3D.minimum_distance
 
         if len(self.available_fields[label].shape) > 1:
-            ret = np.einsum("i, ik -> ik", np.sum(1/safe_dists, axis=1), np.einsum(
-                "ij, ijk -> ik", 1/safe_dists, self.available_fields[label][inds]))
+            ret = np.einsum("i, ik -> ik", np.sum(1 / safe_dists, axis=1), np.einsum(
+                "ij, ijk -> ik", 1 / safe_dists, self.available_fields[label][inds]))
             ret[replace_flg, :] = self.available_fields[label][inds[replace_flg, 0], :]
         else:
-            ret = np.einsum("ij, ij->i", 1/safe_dists,
-                            self.available_fields[label][inds]) / np.sum(1/safe_dists, axis=1)
+            ret = np.einsum("ij, ij->i", 1 / safe_dists,
+                            self.available_fields[label][inds]) / np.sum(1 / safe_dists, axis=1)
             ret[replace_flg] = self.available_fields[label][inds[replace_flg, 0]]
         return ret
 
