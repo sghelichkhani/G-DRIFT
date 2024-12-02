@@ -1,6 +1,11 @@
 from abc import ABC, abstractmethod
 import numpy
 
+# type hinting
+from .profile import RadialProfileSpline
+from typing import Type, Callable, Union
+import numpy.typing as npt
+
 
 class BaseAnelasticityModel(ABC):
     """
@@ -40,19 +45,25 @@ class BaseAnelasticityModel(ABC):
 
 class CammaranoAnelasticityModel(BaseAnelasticityModel):
     """
-    A specific implementation of an anelasticity model following the approach by Cammarano et al.
+    A specific implementation of an anelasticity model following the approach by Cammarano et al., 2003.
     """
 
-    def __init__(self, B, g, a, solidus, Q_bulk=lambda x: 10000, omega=lambda x: 1.0):
+    def __init__(self,
+                 B: Callable[[npt.ArrayLike], npt.NDArray],
+                 g: Callable[[npt.ArrayLike], npt.NDArray],
+                 a: Callable[[npt.ArrayLike], npt.NDArray],
+                 solidus: Type[RadialProfileSpline],
+                 Q_bulk: Callable[[npt.ArrayLike], npt.NDArray],
+                 omega: Callable[[npt.ArrayLike], npt.NDArray]):
         """
         Initialize the model with the given parameters.
 
         Args:
-            B (function): Scaling factor for the Q model.
-            g (function): Activation energy parameter.
-            a (function): Frequency dependency parameter.
-            solidus (function): Solidus temperature for mantle.
-            omega (function): Seismic frequency (default is 1).
+            B Callable[[npt.ArrayLike], Union[npt.NDArray, float]]: Grain size-related attenuation scaling factor.
+            g Callable[[npt.ArrayLike], Union[npt.NDArray, float]]: Activation energy factor equal to $H(P)/RT_\text{m}(P)$ (Karato, 1993).
+            a Callable[[npt.ArrayLike], Union[npt.NDArray, float]]: Exponent controlling frequency dependence.
+            solidus (Type[RadialProfileSpline]): Solidus temperature for mantle.
+            omega Callable[[npt.ArrayLike], Union[npt.NDArray, float]]: Seismic frequency.
         """
         self.B = B
         self.g = g
@@ -61,16 +72,61 @@ class CammaranoAnelasticityModel(BaseAnelasticityModel):
         self.solidus = solidus
         self.Q_bulk = Q_bulk
 
-    def compute_Q_shear(self, depths, temperatures):
+    def __init__(self, q_profile: str, solidus: Type[RadialProfileSpline]):
+        """
+        Initialise the model with parameters corresponding to one of the Qn from Cammarano et al., 2003.
+
+        Args:
+            q_profile (str): The name of the parameter set to use (e.g. "Q1" for Q1).
+            solidus (Type[RadialProfileSpline]): Solidus temperature for mantle.
+        """
+        parameters = {
+            "Q1": {
+                "B": [0.5, 10],
+                "g": [20, 10]
+            },
+            "Q2": {
+                "B": [0.8, 15],
+                "g": [20, 10]
+            },
+            "Q3": {
+                "B": [1.1, 20],
+                "g": [20, 10]
+            },
+            "Q4": {
+                "B": [0.035, 2.25],
+                "g": [30, 15]
+            },
+            "Q5": {
+                "B": [0.056, 3.6],
+                "g": [30, 15]
+            },
+            "Q6": {
+                "B": [0.077, 4.95],
+                "g": [30, 15]
+            }
+        }
+
+        if q_profile not in parameters.keys():
+            raise ValueError(f"Invalid argument: {q_profile}. Must be one of {parameters.keys()}")
+
+        self.B = lambda x: numpy.where(x < 660e3, parameters[q_profile]["B"][0], parameters[q_profile]["B"][1])
+        self.g = lambda x: numpy.where(x < 660e3, parameters[q_profile]["g"][0], parameters[q_profile]["g"][1])
+        self.a = lambda x: 0.2 * numpy.ones_like(x)
+        self.omega = lambda x: numpy.ones_like(x)
+        self.solidus = solidus
+        self.Q_bulk = lambda x: numpy.where(x < 660e3, 1e3, 1e4)
+
+    def compute_Q_shear(self, depths: npt.ArrayLike, temperatures: npt.ArrayLike) -> npt.NDArray:
         """
         Compute the shear Q (attenuation quality factor) matrix based on input depths and temperatures.
 
         Args:
-            depths (numpy.ndarray): An array of depths at which Q values are to be calculated.
-            temperatures (numpy.ndarray): An array of temperatures corresponding to the specified depths.
+            depths (npt.ArrayLike): An array of depths at which Q values are to be calculated.
+            temperatures (npt.ArrayLike): An array of temperatures corresponding to the specified depths.
 
         Returns:
-            numpy.ndarray: A matrix of calculated Q values, representing the shear attenuation quality factor.
+            npt.NDArray: A matrix of calculated Q values, representing the shear attenuation quality factor.
 
         Notes:
             - If either `depths` or `temperatures` has a single element, it will be broadcasted.
@@ -102,7 +158,6 @@ class CammaranoAnelasticityModel(BaseAnelasticityModel):
             temperatures (_type_): _description_
         """
         return self.Q_bulk(depths)
-
 
 def apply_anelastic_correction(thermo_model, anelastic_model):
     """
