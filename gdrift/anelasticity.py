@@ -2,59 +2,90 @@ from abc import ABC, abstractmethod
 import numpy
 
 # type hinting
-from .profile import RadialProfileSpline
-from typing import Type, Callable, Union
+from .profile import RadialProfileSpline, SolidusProfileFromFile, HirschmannSolidus
+from .mineralogy import ThermodynamicModel
+from typing import Type, TypeVar, Callable
 import numpy.typing as npt
 
+AnelasticityModel = TypeVar("AnelasticityModel", bound="BaseAnelasticityModel") # define a type hint for any subclass of `BaseAnelasticityModel`
 
 class BaseAnelasticityModel(ABC):
     """
-    Abstract base class for an anelasticity model.
     Abstract base class for an anelasticity model.
     All anelasticity models must be able to compute a Q matrix given depths and temperatures.
     """
 
     @abstractmethod
-    def compute_Q_shear(self, depths, temperatures):
+    def compute_Q_shear(self, depths: npt.ArrayLike, temperatures: npt.ArrayLike) -> npt.NDArray:
         """
         Computes the s-wave anelastic quality factor (Q) matrix for given depths and temperatures.
 
         Args:
-            depths (numpy.ndarray): Array of depths at which Q values are required.
-            temperatures (numpy.ndarray): Array of temperatures corresponding to the depths.
+            depths (npt.ArrayLike): Array of depths at which Q values are required.
+            temperatures (npt.ArrayLike): Array of temperatures corresponding to the depths.
 
         Returns:
-            numpy.ndarray: A matrix of Q values corresponding to the given depths and temperatures.
+            npt.NDArray: A matrix of Q values corresponding to the given depths and temperatures.
         """
         pass
 
     @abstractmethod
-    def compute_Q_bulk(self, depths, temperatures):
+    def compute_Q_bulk(self, depths: npt.ArrayLike, temperatures: npt.ArrayLike) -> npt.NDArray:
         """
         Computes the compressional anelastic quality factor (Q) matrix for given depths and temperatures.
 
         Args:
-            depths (numpy.ndarray): Array of depths at which Q values are required.
-            temperatures (numpy.ndarray): Array of temperatures corresponding to the depths.
+            depths (npt.ArrayLike): Array of depths at which Q values are required.
+            temperatures (npt.ArrayLike): Array of temperatures corresponding to the depths.
 
         Returns:
-            numpy.ndarray: A matrix of Q values corresponding to the given depths and temperatures.
+            npt.NDArray: A matrix of Q values corresponding to the given depths and temperatures.
         """
         pass
+
+    def build_ghelichkhan_solidus():
+        # Load the solidus curve for the mantle from Andrault et al. (2011)
+        andrault_solidus = SolidusProfileFromFile(
+            model_name="1d_solidus_Andrault_et_al_2011_EPSL",
+            description="Andrault et al. 2011, EPSL")
+
+        # Load the solidus curve for the mantle from Hirschmann (2000)
+        hirsch_solidus = HirschmannSolidus()
+
+        # Combining the two
+        my_depths = []
+        my_solidus = []
+        for solidus_model in [hirsch_solidus, andrault_solidus]:
+            d_min, d_max = solidus_model.min_max_depth()
+            dpths = numpy.arange(d_min, d_max, 10e3)
+            my_depths.extend(dpths)
+            my_solidus.extend(solidus_model.at_depth(dpths))
+
+        # Avoding unnecessary extrapolation by setting the solidus temperature at maximum depth
+        my_depths.extend([3000e3])
+        my_solidus.extend([solidus_model.at_depth(dpths[-1])])
+
+        # building the solidus profile that was originally used by Ghelichkhan et al. (2021)
+        ghelichkhan_et_al = RadialProfileSpline(
+            depth=numpy.asarray(my_depths),
+            value=numpy.asarray(my_solidus),
+            name="Ghelichkhan et al. 2021")
+
+        return ghelichkhan_et_al
 
 
 class CammaranoAnelasticityModel(BaseAnelasticityModel):
     """
-    A specific implementation of an anelasticity model following the approach by Cammarano et al., 2003.
+    A specific implementation of an anelasticity model following the approach by Cammarano et al. (2003).
     """
 
     def __init__(self,
                  B: Callable[[npt.ArrayLike], npt.NDArray],
                  g: Callable[[npt.ArrayLike], npt.NDArray],
                  a: Callable[[npt.ArrayLike], npt.NDArray],
+                 omega: Callable[[npt.ArrayLike], npt.NDArray],
                  solidus: Type[RadialProfileSpline],
-                 Q_bulk: Callable[[npt.ArrayLike], npt.NDArray],
-                 omega: Callable[[npt.ArrayLike], npt.NDArray]):
+                 Q_bulk: Callable[[npt.ArrayLike], npt.NDArray]):
         """
         Initialize the model with the given parameters.
 
@@ -62,8 +93,9 @@ class CammaranoAnelasticityModel(BaseAnelasticityModel):
             B Callable[[npt.ArrayLike], Union[npt.NDArray, float]]: Grain size-related attenuation scaling factor.
             g Callable[[npt.ArrayLike], Union[npt.NDArray, float]]: Activation energy factor equal to $H(P)/RT_\text{m}(P)$ (Karato, 1993).
             a Callable[[npt.ArrayLike], Union[npt.NDArray, float]]: Exponent controlling frequency dependence.
-            solidus (Type[RadialProfileSpline]): Solidus temperature for mantle.
             omega Callable[[npt.ArrayLike], Union[npt.NDArray, float]]: Seismic frequency.
+            solidus (Type[RadialProfileSpline]): Solidus temperature for mantle.
+            Q_bulk: Callable[[npt.ArrayLike], npt.NDArray]: Compressional anelastic quality factor.
         """
         self.B = B
         self.g = g
@@ -72,13 +104,13 @@ class CammaranoAnelasticityModel(BaseAnelasticityModel):
         self.solidus = solidus
         self.Q_bulk = Q_bulk
 
-    def __init__(self, q_profile: str, solidus: Type[RadialProfileSpline]):
+    @classmethod
+    def from_q_profile(cls, q_profile: str):
         """
-        Initialise the model with parameters corresponding to one of the Qn from Cammarano et al., 2003.
+        Initialise the model with parameters corresponding to one of the Qn from Cammarano et al. (2003). This uses the solidus from Ghelichkhan et al. (2021).
 
         Args:
             q_profile (str): The name of the parameter set to use (e.g. "Q1" for Q1).
-            solidus (Type[RadialProfileSpline]): Solidus temperature for mantle.
         """
         parameters = {
             "Q1": {
@@ -110,12 +142,14 @@ class CammaranoAnelasticityModel(BaseAnelasticityModel):
         if q_profile not in parameters.keys():
             raise ValueError(f"Invalid argument: {q_profile}. Must be one of {parameters.keys()}")
 
-        self.B = lambda x: numpy.where(x < 660e3, parameters[q_profile]["B"][0], parameters[q_profile]["B"][1])
-        self.g = lambda x: numpy.where(x < 660e3, parameters[q_profile]["g"][0], parameters[q_profile]["g"][1])
-        self.a = lambda x: 0.2 * numpy.ones_like(x)
-        self.omega = lambda x: numpy.ones_like(x)
-        self.solidus = solidus
-        self.Q_bulk = lambda x: numpy.where(x < 660e3, 1e3, 1e4)
+        B = lambda x: numpy.where(x < 660e3, parameters[q_profile]["B"][0], parameters[q_profile]["B"][1])
+        g = lambda x: numpy.where(x < 660e3, parameters[q_profile]["g"][0], parameters[q_profile]["g"][1])
+        a = lambda x: 0.2 * numpy.ones_like(x)
+        omega = lambda x: numpy.ones_like(x)
+        solidus = cls.build_ghelichkhan_solidus()
+        Q_bulk = lambda x: numpy.where(x < 660e3, 1e3, 1e4)
+        
+        return cls(B=B, g=g, a=a, omega=omega, solidus=solidus, Q_bulk=Q_bulk)
 
     def compute_Q_shear(self, depths: npt.ArrayLike, temperatures: npt.ArrayLike) -> npt.NDArray:
         """
@@ -150,25 +184,150 @@ class CammaranoAnelasticityModel(BaseAnelasticityModel):
 
         return Q_values
 
-    def compute_Q_bulk(self, depths, temperatures):
+    def compute_Q_bulk(self, depths: npt.ArrayLike, temperatures: npt.ArrayLike) -> npt.NDArray:
         """
+        Computes the compressional anelastic quality factor (Q) matrix for given depths and temperatures.
 
         Args:
-            depths (_type_): _description_
-            temperatures (_type_): _description_
+            depths (npt.ArrayLike): Array of depths at which Q values are required.
+            temperatures (npt.ArrayLike): Array of temperatures corresponding to the depths.
+
+        Returns:
+            npt.NDArray: A matrix of Q values corresponding to the given depths and temperatures.
+
+        Notes:
+            - If either `depths` or `temperatures` has a single element, it will be broadcasted.
         """
+        depths = numpy.asarray(depths)
+        temperatures = numpy.asarray(temperatures)
+
+        return self.Q_bulk(depths)
+    
+class GoesAnelasticityModel(BaseAnelasticityModel):
+    """
+    A specific implementation of an anelasticity model following the approach by Goes et al. (2004).
+    """
+
+    def __init__(self,
+                 Q0: Callable[[npt.ArrayLike], npt.NDArray],
+                 xi: Callable[[npt.ArrayLike], npt.NDArray],
+                 a: Callable[[npt.ArrayLike], npt.NDArray],
+                 omega: Callable[[npt.ArrayLike], npt.NDArray],
+                 solidus: Type[RadialProfileSpline],
+                 Q_bulk: Callable[[npt.ArrayLike], npt.NDArray]):
+        """
+        Initialize the model with the given parameters.
+
+        Args:
+            Q0 Callable[[npt.ArrayLike], Union[npt.NDArray, float]]: Grain size-related attenuation scaling factor (equivalent to $B$ in Cammarano et al. [2003]).
+            xi Callable[[npt.ArrayLike], Union[npt.NDArray, float]]: Activation energy factor equal to $aH(P)/RT_\text{m}(P)$ (Karato, 1993; equivalent to $ag$ in Cammarano et al. [2003]).
+            a Callable[[npt.ArrayLike], Union[npt.NDArray, float]]: Exponent controlling frequency dependence.
+            omega Callable[[npt.ArrayLike], Union[npt.NDArray, float]]: Seismic frequency.
+            solidus (Type[RadialProfileSpline]): Solidus temperature for mantle.
+            Q_bulk: Callable[[npt.ArrayLike], npt.NDArray]: Compressional anelastic quality factor.
+        """
+        self.Q0 = Q0
+        self.xi = xi
+        self.a = a
+        self.omega = omega
+        self.solidus = solidus
+        self.Q_bulk = Q_bulk
+
+    @classmethod
+    def from_q_profile(cls, q_profile: str):
+        """
+        Initialise the model with parameters corresponding to one of the Qn from Goes et al. (2003). This uses the solidus from Ghelichkhan et al. (2021).
+
+        Args:
+            q_profile (str): The name of the parameter set to use (e.g. "Q4" for Q4).
+        """
+        parameters = {
+            "Q4": {
+                "Q0": [3.5, 35],
+                "xi": [20, 10]
+            },
+            "Q6": {
+                "Q0": [0.5, 3.5],
+                "xi": [30, 20]
+            }
+        }
+
+        if q_profile not in parameters.keys():
+            raise ValueError(f"Invalid argument: {q_profile}. Must be one of {parameters.keys()}")
+
+        Q0 = lambda x: numpy.where(x < 660e3, parameters[q_profile]["Q0"][0], parameters[q_profile]["Q0"][1])
+        xi = lambda x: numpy.where(x < 660e3, parameters[q_profile]["xi"][0], parameters[q_profile]["xi"][1])
+        a = lambda x: 0.15 * numpy.ones_like(x)
+        omega = lambda x: numpy.ones_like(x)
+        solidus = cls.build_ghelichkhan_solidus()
+        Q_bulk = lambda x: numpy.where(x < 660e3, 1e3, 1e4)
+        
+        return cls(Q0=Q0, xi=xi, a=a, omega=omega, solidus=solidus, Q_bulk=Q_bulk)
+
+    def compute_Q_shear(self, depths: npt.ArrayLike, temperatures: npt.ArrayLike) -> npt.NDArray:
+        """
+        Compute the shear Q (attenuation quality factor) matrix based on input depths and temperatures.
+
+        Args:
+            depths (npt.ArrayLike): An array of depths at which Q values are to be calculated.
+            temperatures (npt.ArrayLike): An array of temperatures corresponding to the specified depths.
+
+        Returns:
+            npt.NDArray: A matrix of calculated Q values, representing the shear attenuation quality factor.
+
+        Notes:
+            - If either `depths` or `temperatures` has a single element, it will be broadcasted.
+            - For a full Q_shear matrix, `depths` and `temperatures` should be of compatible shapes (e.g., generated via `numpy.meshgrid`).
+            - The computation uses the properties of the material, such as `B`, `omega`, `a`, and `g`, along with the solidus temperature at a given depth.
+
+        Example:
+            # Example usage:
+            depths = numpy.linspace(0, 100, 50)  # 50 depth points from 0 to 100 km
+            # Corresponding temperatures
+            temperatures = numpy.linspace(800, 1200, 50)
+            Q_matrix = model.compute_Q_shear(depths, temperatures)
+        """
+        depths = numpy.asarray(depths)
+        temperatures = numpy.asarray(temperatures)
+
+        Q_values = (
+            self.Q0(depths) * (self.omega(depths)**self.a(depths)) * numpy.exp(
+                (self.a(depths) * self.xi(depths) * self.solidus.at_depth(depths)) / temperatures)
+        )
+
+        return Q_values
+
+    def compute_Q_bulk(self, depths: npt.ArrayLike, temperatures: npt.ArrayLike) -> npt.NDArray:
+        """
+        Computes the compressional anelastic quality factor (Q) matrix for given depths and temperatures.
+
+        Args:
+            depths (npt.ArrayLike): Array of depths at which Q values are required.
+            temperatures (npt.ArrayLike): Array of temperatures corresponding to the depths.
+
+        Returns:
+            npt.NDArray: A matrix of Q values corresponding to the given depths and temperatures.
+
+        Notes:
+            - If either `depths` or `temperatures` has a single element, it will be broadcasted.
+        """
+        depths = numpy.asarray(depths)
+        temperatures = numpy.asarray(temperatures)
+
         return self.Q_bulk(depths)
 
-def apply_anelastic_correction(thermo_model, anelastic_model):
+def apply_anelastic_correction(thermo_model: Type[ThermodynamicModel], anelastic_model: Type[AnelasticityModel]):
     """
     Apply anelastic corrections to seismic velocity data using the provided "anelastic_model"
-    within the low attenuation limit. The corrections are based on the equation:
-        $1 - \frac{V(anelastic)}{V(elastic)} = \frac{1}{2} \cot(\frac{\alpha \pi}{2}) Q^{-1}$
+    within the low attenuation limit. The corrections are based on the equation
+    $1 - \frac{V(anelastic)}{V(elastic)} = \frac{1}{2} \cot(\frac{\alpha \pi}{2}) Q^{-1},$
     as described by Stixrude & Lithgow-Bertelloni (doi:10.1029/2004JB002965, Eq-10).
 
-        thermo_model (ThermodynamicModel): The thermodynamic model containing temperature and depth data.
+        thermo_model (Type[ThermodynamicModel]): The thermodynamic model containing temperature and depth data.
+        anelastic_model (Type[AnelasticityModel]): The anelasticity model containing 
 
-        ThermodynamicModel: A new thermodynamic model with anelastically corrected seismic velocities.
+    Returns:
+        Type[ThermodynamicModel]: A new thermodynamic model with anelastically corrected seismic velocities.
 
     The returned model includes the following methods with anelastic corrections:
 
