@@ -52,13 +52,14 @@ class AbstractEarthModel(ABC):
 
 
 class EarthModel3D(AbstractEarthModel):
-    # Hard coding the number of nearest neighbors to interpolate from
-    nearest_neighbours = 8
-
-    def __init__(self):
+    def __init__(self, nearest_neighbours=8, default_max_distance=200e3):
         self.coordinates = None
         self.available_fields = {}
         self.tree = None
+        # Hard coding the number of nearest neighbors to interpolate from
+        self.nearest_neighbours = nearest_neighbours
+        # Default maximum distance beyond which we conclude that there are no meaningful close points
+        self.default_max_distance = default_max_distance
 
     def set_coordinates(self, *args, max_distance=200e3):
         """
@@ -68,6 +69,9 @@ class EarthModel3D(AbstractEarthModel):
         coordinates (np.array): The coordinates to set.
         max_distance (float): The maximum distance beyond which we will raise a fat ass warning.
         """
+        if self.coordinates is not None:
+            raise ValueError("Coordinates are already set. To be safe, start from scratch!")
+
         self.coordinates = np.column_stack(args)
 
     def add_quantity(self, label, field):
@@ -77,6 +81,9 @@ class EarthModel3D(AbstractEarthModel):
         Parameters:
         quantity (str): The name of the quantity to add.
         """
+        if label in self.available_fields:
+            raise ValueError(f"{label} has already been set. To be safe, start from scratch!")
+
         self.available_fields[label] = field
 
     def check_quantity(self, quantity):
@@ -91,6 +98,16 @@ class EarthModel3D(AbstractEarthModel):
         """
         return quantity in self.available_fields.keys()
 
+    def print_available_fields(self):
+        """Print the available fields in the model.
+        """
+        if not self.available_fields:
+            print("No fields available.")
+        else:
+            print("Available fields:")
+            for field in self.available_fields:
+                print(f"- {field}")
+
     def check_extent(self, coordinates):
         """
         Check if the given coordinates are within the model's extent.
@@ -101,7 +118,11 @@ class EarthModel3D(AbstractEarthModel):
         Returns:
         bool: True if the coordinates are within the extent, False otherwise.
         """
-        pass
+        # Testing the closest point
+        distances, _ = self.tree.query(coordinates, k=1)
+
+        if any(distances > self.default_max_distance):
+            raise ValueError("The closest point seems to be beyond the maximum meaningful distance for the Earth model")
 
     def at(self, label: Union[str, List[str]], coordinates: np.array):
         """
@@ -119,8 +140,6 @@ class EarthModel3D(AbstractEarthModel):
         """
         # checking if the quantity is available
         self.check_quantity(label)
-        # checking if the coordinates are within the model's extent
-        self.check_extent(coordinates)
 
         if self.coordinates is None:
             raise ValueError("Coordinates not set for the model")
@@ -130,7 +149,7 @@ class EarthModel3D(AbstractEarthModel):
             self.tree = cKDTree(self.coordinates)
 
         # Finding the nearest points and the indices
-        distances, indices = self.tree.query(coordinates, k=EarthModel3D.nearest_neighbours)
+        distances, indices = self.tree.query(coordinates, k=self.nearest_neighbours)
 
         # Interpolating the values to the points
         res_dictionary = interpolate_to_points(
