@@ -3,12 +3,15 @@ from pdb import set_trace as st
 from .io import load_dataset
 from scipy.interpolate import RectBivariateSpline
 from scipy.optimize import minimize_scalar
+from numbers import Number
+from typing import Optional, Tuple, Union
 
 MODELS_AVAIL = ['SLB_16']
 COMPOSITIONS_AVAIL = ['pyrolite', 'basalt']
 
 
 def LinearRectBivariateSpline(x, y, z):
+
     # This should be the case by default, but for some reason scipy does not catch this
     if not x.size == z.shape[0]:
         raise TypeError('x dimension of z must have same number of '
@@ -17,7 +20,10 @@ def LinearRectBivariateSpline(x, y, z):
         raise TypeError('y dimension of z must have same number of '
                         'elements as y')
 
-    return RectBivariateSpline(x, y, z, kx=1, ky=1)
+    return RectBivariateSpline(
+        x, y, z,
+        bbox=[x[0], x[-1], y[0], y[-1]],
+        kx=1, ky=1)
 
 
 def dataset_name(model: str, composition: str):
@@ -93,23 +99,41 @@ class ThermodynamicModel(object):
     def get_depths(self):
         return self._tables["shear_mod"].get_x()
 
-    def vs_to_temperature(self, vs, depth, bounds):
-        vs_table = self.compute_swave_speed()
-        bi_spline = LinearRectBivariateSpline(
-            vs_table.get_x(),
-            vs_table.get_y(),
-            vs_table.get_vals)
-        # TODO: pass in the bounds
-        return numpy.array([self._find_temperature(v, d, bi_spline) for v, d in zip(vs, depth)])
+    def vs_to_temperature(self, vs: Number, depth: Number, bounds: Optional[Union[Tuple[float, float], Tuple[numpy.ndarray, numpy.ndarray]]] = (300, 7000)) -> Number:
+        """
+        Convert S-wave velocity (vs) to temperature at a given depth.
+        Parameters:
+        -----------
+        vs : Number
+            The S-wave velocity.
+        depth : Number
+            The depth at which the temperature is to be calculated.
+        bounds : Optional[Union[Tuple[float, float], Tuple[numpy.ndarray, numpy.ndarray]]], default=(300, 7000)
+            The bounds for the temperature calculation. It can be a tuple of floats or numpy arrays.
+        Returns:
+        --------
+        Number
+            The temperature corresponding to the given S-wave velocity and depth.
+        """
+        return self._v_to_temperature(vs, depth, self.compute_swave_speed(), bounds)
 
-    def vp_to_temperature(self, vp, depth):
-        vp_table = self.compute_pwave_speed()
-        bi_spline = LinearRectBivariateSpline(
-            vp_table.get_x(),
-            vp_table.get_y(),
-            vp_table.get_vals)
-        # TODO: pass in the bounds
-        return numpy.array([self._find_temperature(v, d, bi_spline) for v, d in zip(vp, depth)])
+    def vp_to_temperature(self, vp: Number, depth: Number, bounds: Optional[Union[Tuple[float, float], Tuple[numpy.ndarray, numpy.ndarray]]] = (300, 7000)) -> Number:
+        """
+        Convert P-wave velocity (vp) to temperature at a given depth.
+        Parameters:
+        -----------
+        vp : Number
+            The P-wave velocity.
+        depth : Number
+            The depth at which the temperature is to be calculated.
+        bounds : Optional[Union[Tuple[float, float], Tuple[numpy.ndarray, numpy.ndarray]]], default=(300, 7000)
+            The bounds for the temperature calculation. It can be a tuple of floats or numpy arrays.
+        Returns:
+        --------
+        Number
+            The temperature corresponding to the given P-wave velocity and depth.
+        """
+        return self._v_to_temperature(vp, depth, self.compute_pwave_speed(), bounds)
 
     def temperature_to_vs(self, temperature, depth):
         vs = self.compute_swave_speed()
@@ -152,10 +176,55 @@ class ThermodynamicModel(object):
                 self._tables["rho"].get_vals()),
             name="v_p")
 
-    def _find_temperature(self, val, depth, interpolator, bounds=None):
+    def _v_to_temperature(self,
+                          v: Number,
+                          depth: Number,
+                          table: Table,
+                          bounds: Optional[Union[Tuple[float, float], Tuple[numpy.ndarray, numpy.ndarray]]] = (300, 7000)) -> Number:
+        """
+        Convert any wave speed to temperature at given depths deping on the table provided.
+
+        Parameters:
+        v (Number): wave speed.
+        depth (Number): Depth at which the temperature is to be calculated.
+        bounds (Optional[Union[Tuple[float, float], Tuple[numpy.ndarray, numpy.ndarray]]]):
+            Bounds for the temperature search. If not provided, default bounds [300, 7000] are used.
+
+        Returns:
+        numpy.ndarray: Temperature corresponding to the given wave speed and depth.
+        """
+
+        # check if bounds is a tuple of floats
+        if isinstance(bounds, tuple) and all(isinstance(b, (float, int)) for b in bounds):
+            bounds = tuple([numpy.full_like(v, b) for b in bounds])
+
+        # Ensure vs, depth, and bounds are all of the same shape
+        if not (v.shape == depth.shape == bounds[0].shape == bounds[1].shape):
+            raise ValueError("vs, depth, and bounds must all have the same shape")
+
+        # create a bivariate spline for the table as interpolater
+        bi_spline = LinearRectBivariateSpline(
+            table.get_x(),
+            table.get_y(),
+            table.get_vals())
+
+        # return the temperature
+        return numpy.squeeze(
+            numpy.array(
+                [self._find_temperature(a_speed, a_depth, bi_spline, bounds=(lb, ub)) for a_speed, a_depth, lb, ub in zip(v, depth, bounds[0], bounds[1])]
+            )
+        )
+
+    def _find_temperature(self, val, depth, interpolator, bounds):
         def objective(temp):
-            return (interpolator(temp, depth) - val)**2
-        result = minimize_scalar(objective, bounds=bounds, method='bounded')
+            return (interpolator(depth, temp) - val)**2
+
+        result = minimize_scalar(
+            objective,
+            bounds=[bounds[0], bounds[1]],
+            method='bounded',
+            options={'xatol': 1e-2}
+        )
         return result.x if result.success else numpy.NaN
 
 
@@ -241,7 +310,7 @@ def compute_pwave_speed(bulk_modulus, shear_modulus, density):
     is_either_float_or_array(bulk_modulus, shear_modulus, density)
     return numpy.sqrt(
         numpy.divide(
-            bulk_modulus + (4./3.) * shear_modulus,
+            bulk_modulus + (4. / 3.) * shear_modulus,
             density
         )
     )
