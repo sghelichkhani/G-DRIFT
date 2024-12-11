@@ -55,8 +55,8 @@ seismic_model = gdrift.SeismicModel("REVEAL")
 
 # Filling the vsh and vsv fields with the values from the seismic model
 reveal_vsh_vsv = seismic_model.at(label=["vsh", "vsv"], coordinates=r.dat.data_with_halos)
-vsh.dat.data_with_halos[:] = reveal_vsh_vsv[:, 0] * 1e3  # Convert to m/s
-vsv.dat.data_with_halos[:] = reveal_vsh_vsv[:, 1] * 1e3  # Convert to m/s
+vsh.dat.data_with_halos[:] = reveal_vsh_vsv[:, 0]
+vsv.dat.data_with_halos[:] = reveal_vsh_vsv[:, 1]
 
 # Compute the isotropic velocity field
 vs.interpolate(sqrt((2 * vsh ** 2 + vsv ** 2) / 3))
