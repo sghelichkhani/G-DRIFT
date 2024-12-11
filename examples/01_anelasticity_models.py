@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import gdrift
-from gdrift.profile import RadialProfileSpline
+from gdrift.profile import SplineProfile
 
 # In this tutorial we show how with the given functionalities
 # we can apply anelastic correction to an existing thermodynamic table
@@ -12,16 +12,18 @@ from gdrift.profile import RadialProfileSpline
 
 def build_solidus():
     # Defining the solidus curve for manlte
-    andrault_solidus = gdrift.SolidusProfileFromFile(
+    # First load the solidus curve of Andrault et al 2011 EPSL
+    andrault_solidus = gdrift.RadialEarthModelFromFile(
         model_name="1d_solidus_Andrault_et_al_2011_EPSL",
         description="Andrault et al 2011 EPSL")
 
-    # Defining parameters for Cammarano style anelasticity model
+    # Next load the solidus curve of Hirschmann 2000
     hirsch_solidus = gdrift.HirschmannSolidus()
 
     my_depths = []
     my_solidus = []
-    for solidus_model in [hirsch_solidus, andrault_solidus]:
+
+    for solidus_model in [hirsch_solidus, andrault_solidus._profiles['solidus temperature']]:
         d_min, d_max = solidus_model.min_max_depth()
         dpths = np.arange(d_min, d_max, 10e3)
         my_depths.extend(dpths)
@@ -30,7 +32,7 @@ def build_solidus():
     my_depths.extend([3000e3])
     my_solidus.extend([solidus_model.at_depth(dpths[-1])])
 
-    ghelichkhan_et_al = RadialProfileSpline(
+    ghelichkhan_et_al = SplineProfile(
         depth=np.asarray(my_depths),
         value=np.asarray(my_solidus),
         name="Ghelichkhan et al 2021")
@@ -114,7 +116,7 @@ ax_2.vlines(
 ax_2.set_xlabel("Temperature[K]")
 ax_2.set_ylabel("Seismic-Wave Speed [m/s]")
 ax_2.text(
-    0.5, 1.05, s=f"At depth {pyrolite_anelastic_speed.get_x()[index]/1e3:.1f} [m]",
+    0.5, 1.05, s=f"At depth {pyrolite_anelastic_speed.get_x()[index] / 1e3:.1f} [m]",
     ha="center", va="center",
     transform=ax_2.transAxes, bbox=dict(facecolor=(1.0, 1.0, 0.7)))
 ax_2.legend()

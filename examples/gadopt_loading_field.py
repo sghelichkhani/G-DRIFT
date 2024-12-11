@@ -16,7 +16,7 @@
 
 from gadopt import *
 import gdrift
-from gdrift.profile import RadialProfileSpline
+from gdrift.profile import SplineProfile
 import numpy as np
 
 # Set up geometry:
@@ -70,7 +70,7 @@ averager.extrapolate_layer_average(v_ave, averager.get_layer_average(vs))
 
 def build_solidus():
     # Defining the solidus curve for manlte
-    andrault_solidus = gdrift.SolidusProfileFromFile(
+    andrault_solidus = gdrift.RadialEarthModelFromFile(
         model_name="1d_solidus_Andrault_et_al_2011_EPSL",
         description="Andrault et al 2011 EPSL")
 
@@ -88,7 +88,7 @@ def build_solidus():
     my_depths.extend([3000e3])
     my_solidus.extend([solidus_model.at_depth(dpths[-1])])
 
-    ghelichkhan_et_al = RadialProfileSpline(
+    ghelichkhan_et_al = SplineProfile(
         depth=np.asarray(my_depths),
         value=np.asarray(my_solidus),
         name="Ghelichkhan et al 2021")
