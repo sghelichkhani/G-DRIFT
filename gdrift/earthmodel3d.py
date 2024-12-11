@@ -86,17 +86,23 @@ class EarthModel3D(AbstractEarthModel):
 
         self.available_fields[label] = field
 
-    def check_quantity(self, quantity):
+    def check_quantity(self, quantity: Union[str, List[str]]):
         """
-        Check if a quantity is available in the model.
+        Check if a quantity or quantities are available in the model.
 
         Parameters:
-        quantity (str): The name of the quantity to check.
+        quantity (Union[str, List[str]]): The name of the quantity or list of quantities to check.
 
         Returns:
-        bool: True if the quantity is available, False otherwise.
+        bool: True if all quantities are available, False otherwise.
         """
-        return quantity in self.available_fields.keys()
+
+        if isinstance(quantity, str):
+            return quantity in self.available_fields.keys()
+        elif isinstance(quantity, list):
+            return all(q in self.available_fields.keys() for q in quantity)
+        else:
+            raise TypeError("Quantity must be a string or a list of strings")
 
     def print_available_fields(self):
         """Print the available fields in the model.
@@ -157,7 +163,7 @@ class EarthModel3D(AbstractEarthModel):
             distances,
             indices)
 
-        return res_dictionary
+        return np.squeeze(res_dictionary)
 
 
 class SeismicEarthModel(EarthModel3D):
