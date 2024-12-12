@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import gdrift
-from gdrift.profile import RadialProfileSpline
+from gdrift.profile import SplineProfile
 
 # In this tutorial we show how with the given functionalities
 # we can apply anelastic correction to an existing thermodynamic table
@@ -14,18 +14,20 @@ from gdrift.profile import RadialProfileSpline
 
 
 def build_solidus():
-    # Load the solidus curve for the mantle from Andrault et al. (2011)
-    andrault_solidus = gdrift.SolidusProfileFromFile(
+    # Defining the solidus curve for manlte
+    # First load the solidus curve of Andrault et al 2011 EPSL
+    andrault_solidus = gdrift.RadialEarthModelFromFile(
         model_name="1d_solidus_Andrault_et_al_2011_EPSL",
         description="Andrault et al. 2011, EPSL")
 
-    # Load the solidus curve for the mantle from Hirschmann (2000)
+    # Next load the solidus curve of Hirschmann 2000
     hirsch_solidus = gdrift.HirschmannSolidus()
 
     # Combining the two
     my_depths = []
     my_solidus = []
-    for solidus_model in [hirsch_solidus, andrault_solidus]:
+
+    for solidus_model in [hirsch_solidus, andrault_solidus.get_profile('solidus temperature')]:
         d_min, d_max = solidus_model.min_max_depth()
         dpths = np.arange(d_min, d_max, 10e3)
         my_depths.extend(dpths)
@@ -35,8 +37,7 @@ def build_solidus():
     my_depths.extend([3000e3])
     my_solidus.extend([solidus_model.at_depth(dpths[-1])])
 
-    # building the solidus profile that was originally used by Ghelichkhan et al. (2021)
-    ghelichkhan_et_al = RadialProfileSpline(
+    ghelichkhan_et_al = SplineProfile(
         depth=np.asarray(my_depths),
         value=np.asarray(my_solidus),
         name="Ghelichkhan et al 2021")
