@@ -1,5 +1,4 @@
 import numpy
-from pdb import set_trace as st
 from .io import load_dataset
 from scipy.interpolate import RectBivariateSpline
 from scipy.optimize import minimize_scalar

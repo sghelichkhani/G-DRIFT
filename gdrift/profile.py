@@ -1,13 +1,16 @@
 from typing import Optional, List, Union
+from typing import Optional, List, Union
 from numbers import Number
 import numpy
 from .constants import R_earth, celcius2kelvin
+from .utility import compute_gravity, compute_pressure, compute_mass, enlist
 from .utility import compute_gravity, compute_pressure, compute_mass, enlist
 from .io import load_dataset
 import scipy
 from abc import ABC, abstractmethod
 
 
+class AbstractProfile(ABC):
 class AbstractProfile(ABC):
     """
     Abstract class representing a radial profile of a quantity within the Earth.
@@ -19,17 +22,58 @@ class AbstractProfile(ABC):
     def __init__(self, name: str):
         self.name = name
 
+    def __init__(self, name: str):
+        self.name = name
+
     @abstractmethod
+    def at_depth(self, depth: Number) -> Number:
     def at_depth(self, depth: Number) -> Number:
         """
         Retrieve the quantity (e.g., temperature, pressure, density) at a specified depth.
 
         Args:
             depth (float or numpy.ndarray): The depth~(SI unit) from the surface of the Earth.
+            depth (float or numpy.ndarray): The depth~(SI unit) from the surface of the Earth.
 
         Returns:
             float or numpy.ndarray: The quantity at the specified depth.
         """
+        pass
+
+
+class SplineProfile(AbstractProfile):
+    def __init__(self, depth: Number, value: Number, name: Optional[str] = "Profile", spline_type="linear"):
+        """
+        Initialize a radial profile by establishing a spline.
+
+            depth (Number): Array of depths.
+            value (Number): Array of corresponding values.
+            name (Optional[str], optional): Name of the profile. Defaults to an empty string.
+            spline_type (str, optional): Type of spline to use. Defaults to "linear".
+        """
+        # All profiles should come with a name
+        super().__init__(name)
+        self.raw_depth = depth
+        self.raw_value = value
+
+        self.spline_type = spline_type
+        self._is_spline_made = False
+
+    def at_depth(self, depth: Number) -> Number:
+        """
+        Query the profile value at a specified depth or depths.
+
+            depth (Number): A single depth value or an array of depth values
+                            at which to query the profile.
+
+            Number or numpy.ndarray: The profile value(s) at the specified depth(s).
+                                     Returns a single value if a single depth is provided,
+                                     or an array of values if an array of depths is provided.
+
+        Raises:
+            ValueError: If the provided depth is out of the valid range.
+        """
+        # Make sure the query depth is within the valid range
         pass
 
 
@@ -77,14 +121,28 @@ class SplineProfile(AbstractProfile):
         # Query the spline
         return self._spline(depth)
 
+
+        # If the spline has not been made, create it
+        if not self._is_spline_made:
+            # Create a linear spline
+            self._spline = scipy.interpolate.interp1d(self.raw_depth, self.raw_value, kind=self.spline_type)
+            self._is_spline_made = True
+
+        # Query the spline
+        return self._spline(depth)
+
     def min_max_depth(self):
         """
         Calculate the minimum and maximum depth values of the profile to prevent extrapolation.
+        Calculate the minimum and maximum depth values of the profile to prevent extrapolation.
 
+            tuple: A tuple containing the minimum and maximum depth values (min, max).
             tuple: A tuple containing the minimum and maximum depth values (min, max).
         """
         return (self.raw_depth.min(), self.raw_depth.max())
+        return (self.raw_depth.min(), self.raw_depth.max())
 
+    def _validate_depth(self, depth: Number):
     def _validate_depth(self, depth: Number):
         """
         Check if the provided depth is within the valid range.
@@ -112,6 +170,7 @@ class RadialEarthModel:
     """
 
     def __init__(self, profiles: Union[AbstractProfile, List[AbstractProfile]]):
+    def __init__(self, profiles: Union[AbstractProfile, List[AbstractProfile]]):
         """
         Initialize the RadialEarthModel with a dictionary of radial profiles instances.
 
@@ -127,7 +186,30 @@ class RadialEarthModel:
         for p in profiles:
             self._profiles[p.name] = p
 
+    def get_profile(self, property_name: str) -> AbstractProfile:
+        """
+        Retrieve a profile by its name.
+
+        Args:
+            property_name (str): The name of the property profile to retrieve.
+
+        Returns:
+            AbstractProfile: The profile corresponding to the specified property name.
+
+        Raises:
+            ValueError: If the specified property name does not exist in the model.
+        """
+        if property_name in self.get_profile_names():
+            return self._profiles[property_name]
+        else:
+            raise ValueError(f"Property {property_name} not found. Existing properties: {', '.join(self.get_profile_names())}")
+
     def get_profile_names(self):
+        """
+        Retrieve the names of all profiles.
+
+            list: A list containing the names of all profiles.
+        """
         """
         Retrieve the names of all profiles.
 
@@ -136,7 +218,18 @@ class RadialEarthModel:
         return list(self._profiles.keys())
 
     def at_depth(self, property_name: str, depth: Number) -> Number:
+    def at_depth(self, property_name: str, depth: Number) -> Number:
         """
+        Retrieve the value of a specified property at a given depth.
+            property_name (str): The name of the property to retrieve (e.g., 'Vs', 'Vp', 'Density').
+            depth (float or numpy.ndarray): The depth in kilometers at which to retrieve the property value.
+            float or numpy.ndarray: The value of the specified property at the given depth.
+        Raises:
+            ValueError: If the specified property name does not exist in the model.
+
+        """
+        # Check if the property exists in the model
+        if property_name in self.get_profile_names():
         Retrieve the value of a specified property at a given depth.
             property_name (str): The name of the property to retrieve (e.g., 'Vs', 'Vp', 'Density').
             depth (float or numpy.ndarray): The depth in kilometers at which to retrieve the property value.
@@ -154,8 +247,14 @@ class RadialEarthModel:
     def min_max_depth(self, property_name: str) -> tuple:
         """
         Retrieve the minimum and maximum depth for a specified property profile.
+            raise ValueError(f"Property {property_name} not found. Existing properties:{','.joint(self.get_profile_names())}")
+
+    def min_max_depth(self, property_name: str) -> tuple:
+        """
+        Retrieve the minimum and maximum depth for a specified property profile.
 
         Args:
+            property_name (str): The name of the property profile to query.
             property_name (str): The name of the property profile to query.
 
         Returns:
@@ -168,12 +267,25 @@ class RadialEarthModel:
             return self._profiles[property_name].min_max_depth()
         else:
             raise ValueError(f"Property {property_name} not found. Existing properties: {', '.join(self.get_profile_names())}")
+            tuple: A tuple containing the minimum and maximum depth values (min, max).
+
+        Raises:
+            ValueError: If the specified property name does not exist in the model.
+        """
+        if property_name in self.get_profile_names():
+            return self._profiles[property_name].min_max_depth()
+        else:
+            raise ValueError(f"Property {property_name} not found. Existing properties: {', '.join(self.get_profile_names())}")
 
 
 class RadialEarthModelFromFile(RadialEarthModel):
+class RadialEarthModelFromFile(RadialEarthModel):
     """
     A class for loading radial profiles from a dataset.
+    A class for loading radial profiles from a dataset.
 
+    This class extends `SplineProfile` to specifically handle loading,
+    and utilizing available profiles related to profiles in the mantle.
     This class extends `SplineProfile` to specifically handle loading,
     and utilizing available profiles related to profiles in the mantle.
 
@@ -183,7 +295,9 @@ class RadialEarthModelFromFile(RadialEarthModel):
     """
 
     def __init__(self, model_name: str, description: str = None):
+    def __init__(self, model_name: str, description: str = None):
         """
+        Initialises the RadialEarthModelFromFile instance by loading the solidus temperature
         Initialises the RadialEarthModelFromFile instance by loading the solidus temperature
         profile from the specified dataset.
 
@@ -196,12 +310,49 @@ class RadialEarthModelFromFile(RadialEarthModel):
             KeyError: If the necessary data fields are missing in the dataset.
         """
         # Set the profile name
+        # Set the profile name
         self.model_name = model_name
+        # Set the description
         # Set the description
         self.description = description
 
         # Load the dataset
+        # Load the dataset
         profiles = load_dataset(self.model_name)
+
+        # Get the depth
+        depths = profiles.get("depth")
+
+        # Extract the profiles as Profile objects
+        all_profiles = []
+        for name, value in profiles.items():
+            if name == "depth":
+                continue
+            all_profiles.append(SplineProfile(depth=depths, value=value, name=name, spline_type="linear"))
+
+        # Initialize the RadialEarthModel
+        super().__init__(all_profiles)
+
+
+class PreliminaryRefEarthModel(RadialEarthModelFromFile):
+    """
+    Initializes the Preliminary Reference Earth Model (PREM).
+    This model is based on the work by Dziewonski and Anderson (1981) and provides a reference Earth model that can be queried at specific depths for various profiles.
+
+    References:
+        Dziewonski, Adam M., and Don L. Anderson. "Preliminary reference Earth model." Physics of the Earth and Planetary Interiors 25.4 (1981): 297-356.
+
+    The object is of type RadialEarthModel and is initialized by loading profiles from an existing dataset. Each profile is represented as a SplineProfile object.
+
+    Attributes:
+        prem_profiles (list): A list of SplineProfile objects representing different profiles in the PREM dataset.
+    """
+    # Filename containing PREM property profiles
+    PREM_FILENAME = "1d_prem"
+
+    def __init__(self):
+        # Initialize the RadialEarthModel
+        super().__init__(PreliminaryRefEarthModel.PREM_FILENAME, "Preliminary Reference Earth Model")
 
         # Get the depth
         depths = profiles.get("depth")
@@ -266,9 +417,38 @@ class HirschmannSolidus(AbstractProfile):
     _nd_radial = 1000
     _maximum_pressure = 10e9
     _name = "Hirschmann 2000"
+class HirschmannSolidus(AbstractProfile):
+    """
+    HirschmannSolidus is the solidus model based on the work of Hirschmann (2000).
+
+    Attributes:
+        nd_radial (int): Number of radial points for interpolation.
+        maximum_pressure (float): Maximum pressure in Pascals.
+        name (str): Name of the profile.
+
+    Methods:
+        __init__():
+            Initializes the HirschmannSolidus object.
+
+        at_depth(depth: float | numpy.ndarray):
+            Computes the solidus temperature at a given depth or array of depths.
+
+        _setup_depth_converter():
+            Sets up the depth to pressure converter using the Preliminary Reference Earth Model (PREM).
+
+        _polynomial(pressure):
+            Computes the solidus temperature in Kelvin based on the given pressure.
+
+        min_max_depth():
+            Computes the minimum and maximum depths for which the pressure does not exceed the maximum pressure.
+    """
+    _nd_radial = 1000
+    _maximum_pressure = 10e9
+    _name = "Hirschmann 2000"
 
     def __init__(self):
         self._is_depth_converter_setup = False
+        self.name = HirschmannSolidus._name
         self.name = HirschmannSolidus._name
 
     def at_depth(self, depth: float | numpy.ndarray):
@@ -279,7 +459,10 @@ class HirschmannSolidus(AbstractProfile):
 
     def _setup_depth_converter(self):
         # Load PREM
+        # Load PREM
         prem = PreliminaryRefEarthModel()
+        # Compute mass, gravity, and pressure
+        radius = numpy.linspace(0., R_earth, HirschmannSolidus._nd_radial)
         # Compute mass, gravity, and pressure
         radius = numpy.linspace(0., R_earth, HirschmannSolidus._nd_radial)
         depths = R_earth - radius
@@ -287,6 +470,7 @@ class HirschmannSolidus(AbstractProfile):
         gravity = compute_gravity(radius, mass)
         pressure = compute_pressure(
             radius, prem.at_depth("density", depths), gravity)
+        # Interpolate pressure
         # Interpolate pressure
         self._depth_to_pressure = scipy.interpolate.interp1d(
             depths, pressure, kind="linear")
@@ -304,10 +488,26 @@ class HirschmannSolidus(AbstractProfile):
 
         def pressure_difference(depth):
             return (self._depth_to_pressure(depth) - HirschmannSolidus._maximum_pressure)
+            return (self._depth_to_pressure(depth) - HirschmannSolidus._maximum_pressure)
 
         max_depth = scipy.optimize.root_scalar(
             pressure_difference, method="bisect", bracket=[0, 2000e3]).root
         return (0., max_depth)
+
+    def _validate_depth(self, depth: Number):
+        """
+        Check if the provided depth is within the valid range.
+
+        Args:
+            depth (float or numpy.ndarray): The depth to check.
+
+        Raises:
+            ValueError: If the depth is outside the valid range.
+        """
+        min_depth, max_depth = self.min_max_depth()
+        if numpy.any((depth < min_depth) | (depth > max_depth)):
+            raise ValueError(
+                f"Depth {depth} is out of the valid range ({min_depth}, {max_depth})")
 
     def _validate_depth(self, depth: Number):
         """
