@@ -127,6 +127,24 @@ class RadialEarthModel:
         for p in profiles:
             self._profiles[p.name] = p
 
+    def get_profile(self, property_name: str) -> AbstractProfile:
+        """
+        Retrieve a profile by its name.
+
+        Args:
+            property_name (str): The name of the property profile to retrieve.
+
+        Returns:
+            AbstractProfile: The profile corresponding to the specified property name.
+
+        Raises:
+            ValueError: If the specified property name does not exist in the model.
+        """
+        if property_name in self.get_profile_names():
+            return self._profiles[property_name]
+        else:
+            raise ValueError(f"Property {property_name} not found. Existing properties: {', '.join(self.get_profile_names())}")
+
     def get_profile_names(self):
         """
         Retrieve the names of all profiles.
