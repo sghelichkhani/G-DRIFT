@@ -6,7 +6,7 @@ from scipy.optimize import minimize_scalar
 from numbers import Number
 from typing import Optional, Tuple, Union
 
-MODELS_AVAIL = ['SLB_16']
+MODELS_AVAIL = ['SLB_16', "SLB_21"]
 COMPOSITIONS_AVAIL = ['pyrolite', 'basalt']
 
 
@@ -59,9 +59,11 @@ class ThermodynamicModel(object):
     def __init__(self, model: str, composition: str, temps=None, depths=None):
         self.model = model
         self.composition = composition
-        if model not in MODELS_AVAIL:
-            raise ValueError(
-                f"{model} not available. Use `print_available_models` to see all available models")
+
+        # Todo: I am commenting this out, but it should be replace in load_dataset
+        # if model not in MODELS_AVAIL:
+        #     raise ValueError(
+        #         f"{model} not available. Use `print_available_models` to see all available models")
 
         # load the hdf5 table
         loaded_model = load_dataset(
