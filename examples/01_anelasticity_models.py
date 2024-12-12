@@ -27,7 +27,7 @@ def build_solidus():
     my_depths = []
     my_solidus = []
 
-    for solidus_model in [hirsch_solidus, andrault_solidus._profiles['solidus temperature']]:
+    for solidus_model in [hirsch_solidus, andrault_solidus.get_profile('solidus temperature')]:
         d_min, d_max = solidus_model.min_max_depth()
         dpths = np.arange(d_min, d_max, 10e3)
         my_depths.extend(dpths)

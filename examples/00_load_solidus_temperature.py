@@ -21,7 +21,7 @@ hirsch_solidus = gdrift.HirschmannSolidus()
 
 my_depths = []
 my_solidus = []
-for solidus_model in [hirsch_solidus, andrault_solidus._profiles['solidus temperature']]:
+for solidus_model in [hirsch_solidus, andrault_solidus.get_profile('solidus temperature')]:
     d_min, d_max = solidus_model.min_max_depth()
     dpths = np.arange(d_min, d_max, 10e3)
     my_depths.extend(dpths)
@@ -36,7 +36,7 @@ plt.close(1)
 fig = plt.figure(num=1)
 ax = fig.add_subplot(111)
 for solidus_model, marker in zip(
-        [andrault_solidus._profiles["solidus temperature"], hirsch_solidus, fiquet_solidus._profiles["solidus temperature"], ghelichkhan_et_al],
+        [andrault_solidus.get_profile("solidus temperature"), hirsch_solidus, fiquet_solidus.get_profile("solidus temperature"), ghelichkhan_et_al],
         ["-", "-.", "--", ":"]):
     d_min, d_max = solidus_model.min_max_depth()
     dpths = np.arange(d_min, d_max, 10e3)
