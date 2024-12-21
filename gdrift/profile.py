@@ -81,7 +81,7 @@ class SplineProfile(AbstractProfile):
         # If the spline has not been made, create it
         if not self._is_spline_made:
             # Create a linear spline
-            self._spline = scipy.interpolate.interp1d(self.raw_depth, self.raw_value, kind=self.spline_type)
+            self._spline = scipy.interpolate.interp1d(self.raw_depth, self.raw_value, kind=self.spline_type, fill_value="extrapolate")
             self._is_spline_made = True
 
         # Query the spline
