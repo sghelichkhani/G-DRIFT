@@ -44,7 +44,7 @@ class SplineProfile(AbstractProfile):
         _is_spline_made (bool): Flag to indicate if the spline has been created.
     """
 
-    def __init__(self, depth: Number, value: Number, name: Optional[str] = "Profile", spline_type="linear"):
+    def __init__(self, depth: Number, value: Number, name: Optional[str] = "Profile", spline_type: str = "linear", extrapolate: bool = False):
         """
         Initialise a radial profile by establishing a spline.
 
@@ -52,6 +52,7 @@ class SplineProfile(AbstractProfile):
             value (Number): Array of corresponding values.
             name (Optional[str], optional): Name of the profile. Defaults to an empty string.
             spline_type (str, optional): Type of spline to use. Defaults to "linear".
+            extrapolate (bool, optional): Whether to allow extrapolation. Defaults to False.
         """
         # All profiles should come with a name
         super().__init__(name)
@@ -60,6 +61,9 @@ class SplineProfile(AbstractProfile):
 
         self.spline_type = spline_type
         self._is_spline_made = False
+
+        # Check if the spline should extrapolate:
+        self.extrapolate = extrapolate
 
     def at_depth(self, depth: Number) -> Number:
         """
@@ -75,13 +79,18 @@ class SplineProfile(AbstractProfile):
         Raises:
             ValueError: If the provided depth is out of the valid range.
         """
-        # Make sure the query depth is within the valid range
-        self._validate_depth(depth)
+        # Make sure the query depth is within the valid range if not extrapolating
+        if not self.extrapolate:
+            self._validate_depth(depth)
 
         # If the spline has not been made, create it
         if not self._is_spline_made:
             # Create a linear spline
-            self._spline = scipy.interpolate.interp1d(self.raw_depth, self.raw_value, kind=self.spline_type, fill_value="extrapolate")
+            self._spline = scipy.interpolate.interp1d(
+                self.raw_depth, self.raw_value, kind=self.spline_type,
+                bounds_error=False if self.extrapolate is True else False,
+                fill_value="extrapolate")
+
             self._is_spline_made = True
 
         # Query the spline
