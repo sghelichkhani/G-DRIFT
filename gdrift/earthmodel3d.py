@@ -4,7 +4,7 @@ import numpy as np
 from .constants import R_cmb, R_earth
 from .io import load_dataset
 from scipy.spatial import cKDTree
-from .utility import enlist, interpolate_to_points, create_labeled_array, create_data_dict
+from .utility import enlist, interpolate_to_points, create_labeled_array
 
 
 class AbstractEarthModel(ABC):
@@ -181,8 +181,7 @@ class SeismicEarthModel(EarthModel3D):
     def check_extent(self, x, y, z, tolerance=1e-3):
         radius = np.sqrt(x**2 + y**2 + z**2)
 
-        return (all(radius >= REVEALSeismicModel3D.rmin - tolerance)
-                and all(radius <= REVEALSeismicModel3D.rmax + tolerance))
+        return (all(radius >= REVEALSeismicModel3D.rmin - tolerance) and all(radius <= REVEALSeismicModel3D.rmax + tolerance))
 
     def _interpolate_to_points(self, label, coordinates, k=20):
         # Making sure we have a list of items
@@ -227,10 +226,6 @@ class SeismicEarthModel(EarthModel3D):
 
         for key in data.keys() if len(labels) == 1 else labels:
             self.add_quantity(key, data[key])
-        pass
-
-    @abstractmethod
-    def _interpolate_to_points(self, label, coords):
         pass
 
 
