@@ -1,3 +1,5 @@
+# flake8: noqa: F403,F405
+# We should fix this later
 # This script demonstrates how to set up a spherical mesh using the `gadopt` and `gdrift` libraries,
 # interpolate seismic model data onto the mesh, and compute layer-averaged seismic velocities.
 # The resulting fields are then written to a VTK file for visualization.
