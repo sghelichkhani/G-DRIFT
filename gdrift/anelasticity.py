@@ -105,7 +105,7 @@ class CammaranoAnelasticityModel(BaseAnelasticityModel):
 
 
 def apply_anelastic_correction(thermo_model, anelastic_model):
-    """
+    r"""
     Apply anelastic corrections to seismic velocity data using the provided "anelastic_model"
     within the low attenuation limit. The corrections are based on the equation:
         $1 - \frac{V(anelastic)}{V(elastic)} = \frac{1}{2} \cot(\frac{\alpha \pi}{2}) Q^{-1}$
@@ -160,8 +160,7 @@ def apply_anelastic_correction(thermo_model, anelastic_model):
 
             # Anelastically corrected shear wave values
             corrected_vals = (
-                swave_speed_table.get_vals() * (1 - 0.5 / numpy.tan(anelastic_model.a(depths_x)
-                                                                    * numpy.pi / 2) / Q_matrix)
+                swave_speed_table.get_vals() * (1 - 0.5 / numpy.tan(anelastic_model.a(depths_x) * numpy.pi / 2) / Q_matrix)
             )
 
             #
@@ -195,8 +194,7 @@ def apply_anelastic_correction(thermo_model, anelastic_model):
             swave_speed_table = super().compute_swave_speed()
 
             # Compute L
-            L = 4 / 3 * (swave_speed_table.get_vals() /
-                         pwave_speed_table.get_vals()) ** 2
+            L = 4 / 3 * (swave_speed_table.get_vals() / pwave_speed_table.get_vals()) ** 2
 
             # Meshing depths and temperatures of the anharmonic model to get all combinations
             depths_x, temperatures_x = numpy.meshgrid(
@@ -210,8 +208,7 @@ def apply_anelastic_correction(thermo_model, anelastic_model):
 
             # Apply anelastic correction
             corrected_vals = (
-                pwave_speed_table.get_vals() * (1 - 0.5 / numpy.tan(anelastic_model.a(depths_x)
-                                                                    * numpy.pi / 2) * Q_matrix_inv)
+                pwave_speed_table.get_vals() * (1 - 0.5 / numpy.tan(anelastic_model.a(depths_x) * numpy.pi / 2) * Q_matrix_inv)
             )
 
             # return the anelastically corrected table

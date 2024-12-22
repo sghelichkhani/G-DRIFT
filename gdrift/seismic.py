@@ -1,6 +1,5 @@
 from .earthmodel3d import EarthModel3D
 from .io import load_dataset
-from numbers import Number
 
 AVAILABLE_SEISMIC_MODELS = [
     "MITP08",
