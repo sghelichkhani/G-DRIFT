@@ -121,6 +121,32 @@ prem = gdrift.PreliminaryRefEarthModel()
 slb_pyrolite = gdrift.ThermodynamicModel("SLB_16", "pyrolite")
 pyrolite_elastic_speed = slb_pyrolite.compute_swave_speed()
 
+# The solid phase changes for mantle minerals are a source of error when
+# interpreting seismic tomography speed in terms of temperature. This
+# has been explain in detail in Ghelichkhan et al 2021. Here we regularise
+# the thermodynamic table along a specific temperature profile. The regularisaion
+# is done by limiting derivatives with respect to temperature, and anchoring the
+# curves to the original value of vs/T at each depth.
+
+# We first load the temperature profile
+# first column contains depths, and second column contains temperatures
+terra_temperature_array = np.loadtxt("TerraMT512vs.dat ", unpack=False, usecols=(0, 1))
+# Make a spline that can be passed onto regularisation
+terra_temperature_spline = gdrift.SplineProfile(
+    depth=terra_temperature_array[:, 0],
+    value=terra_temperature_array[:, 1],
+    name="TerraMT512vs"
+)
+
+# regularise the thermodynamic table using default values
+# Default values only prohibit positive jumps in the derivative
+# These jumps are associated with phase changes, and make the
+# problem of finding the associated temperature with a certain
+# seismic speed at depths such as 660 km non-unique.
+regular_slb_pyrolite = gdrift.regularise_thermodynamic_table(
+    slb_pyrolite, temperature_spline,
+    regular_range={"v_s": (-1.5, 0.0), "v_p": (-np.inf, 0.0), "rho": (-np.inf, 0.0)})
+
 # building solidus model
 solidus_ghelichkhan = build_solidus()
 anelasticity = build_anelasticity_model(solidus_ghelichkhan)
