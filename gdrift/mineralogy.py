@@ -1,10 +1,24 @@
 import numpy
 from .profile import AbstractProfile
+from .profile import AbstractProfile
 from .io import load_dataset
 from scipy.interpolate import RectBivariateSpline
 from scipy.optimize import minimize_scalar
 from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree
 from numbers import Number
+from typing import Optional, Tuple, Union, Dict
+import numpy as np
+
+# Default regular range for gradients
+# This will be used in regularise_thermodynamic_table
+# if nothing is provided
+default_regular_range = {
+    "v_s": (-np.inf, 0.0),
+    "v_p": (-np.inf, 0.0),
+    "rho": (-np.inf, 0.0),
+}
+
 from typing import Optional, Tuple, Union, Dict
 import numpy as np
 
@@ -168,6 +182,7 @@ class ThermodynamicModel(object):
             self._tables["rho"].get_x(),
             self._tables["rho"].get_y(),
             self._tables["rho"].get_vals()).ev(depth, temperature)
+            self._tables["rho"].get_vals()).ev(depth, temperature)
 
     def compute_swave_speed(self):
         return type(self._tables["shear_mod"])(
@@ -299,6 +314,7 @@ def compute_swave_speed(shear_modulus, density):
 
 
 def compute_pwave_speed(bulk_modulus: Number, shear_modulus: Number, density: Number) -> Number:
+def compute_pwave_speed(bulk_modulus: Number, shear_modulus: Number, density: Number) -> Number:
     """Calculate the P-wave (primary wave) speed in a material based on its bulk modulus,
     shear modulus, and density. Inputs can be floats or numpy arrays of the same size.
 
@@ -322,6 +338,7 @@ def compute_pwave_speed(bulk_modulus: Number, shear_modulus: Number, density: Nu
     """
     # making sure that input is either array or float
     is_either_float_or_array(bulk_modulus, shear_modulus, density)
+
 
     return numpy.sqrt(
         numpy.divide(
