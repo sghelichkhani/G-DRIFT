@@ -1,4 +1,33 @@
 import matplotlib.pyplot as plt
+"""
+This script demonstrates how to apply anelastic correction to an existing thermodynamic table using the functionalities provided by the `gdrift` library. The anelastic model used in this example is based on the work of Cammarano et al., and the solidus curve is constructed by combining datasets from Andrault et al. (2011, EPSL) and Hirschmann (2000, G3).
+
+Functions:
+    build_solidus():
+        Constructs the solidus curve for the mantle by combining the solidus curves from Andrault et al. (2011, EPSL) and Hirschmann (2000).
+
+    build_anelasticity_model(solidus, q_profile: str = "Q1"):
+        Constructs the anelasticity model based on the solidus curve and the parameters from Cammarano et al. The `q_profile` parameter allows selecting different sets of parameters.
+
+    Regularising the table:
+        Regularising the thermodynamic table involves adjusting the table to ensure that the seismic speeds are consistent at specific temperatures. This is done using a temperature profile representing the mantle average temperature.
+
+    The `regularise_thermodynamic_table` function in `mineralogy.py`:
+        This function adjusts the thermodynamic table to ensure consistency in seismic speeds at specific temperatures. It takes the original thermodynamic model, a temperature profile, and a range for regularisation as inputs and returns a regularised thermodynamic model.
+
+Example Usage:
+    The script demonstrates the following steps:
+    1. Load the Preliminary Reference Earth Model (PREM).
+    2. Create a thermodynamic model for pyrolite.
+    3. Compute the elastic shear-wave and compressional-wave speeds.
+    4. Build the solidus model.
+    5. Construct the anelasticity model using the solidus model.
+    6. Apply the anelastic correction to the thermodynamic model.
+    7. Compute the anelastic shear-wave and compressional-wave speeds.
+    8. Regularise the thermodynamic table.
+    9. Apply the anelastic correction to the regularised thermodynamic table.
+    10. Plot the results, including contour plots of shear-wave speeds and specific depth profiles for shear and compressional seismic speeds.
+"""
 import numpy as np
 import gdrift
 from gdrift.profile import SplineProfile
@@ -121,9 +150,13 @@ temperature_spline = gdrift.SplineProfile(
 )
 
 
+# Regularising the table
+# Regularisation works by saturating the minimum and maximum of variable gradients with respect to temperature.
+# Default values are between -inf and 0.0; which essentialy prohibits phase jumps that would otherwise render
+# v_s/v_p/rho versus temperature non-unique.
 linear_slb_pyrolite = gdrift.mineralogy.regularise_thermodynamic_table(
     slb_pyrolite, temperature_spline,
-    regular_range={"v_s": [-1.0, 0], "v_p": [-1.0, 0.], "rho": [-0.5, 0.]}
+    regular_range={"v_s": [-0.5, 0], "v_p": [-0.5, 0.], "rho": [-0.5, 0.]}
 )
 
 # Regularising the table
@@ -141,8 +174,8 @@ cntr_lines = np.linspace(4000, 7000, 20)
 plt.close("all")
 fig, axes = plt.subplots(figsize=(12, 8), ncols=3)
 axes[0].set_position([0.05, 0.1, 0.25, 0.8])
-axes[1].set_position([0.35, 0.1, 0.25, 0.8])
-axes[2].set_position([0.65, 0.1, 0.25, 0.8])
+axes[1].set_position([0.31, 0.1, 0.25, 0.8])
+axes[2].set_position([0.57, 0.1, 0.25, 0.8])
 # Getting the coordinates
 depths_x, temperatures_x = np.meshgrid(
     slb_pyrolite.get_depths(), slb_pyrolite.get_temperatures(), indexing="ij")
@@ -161,8 +194,9 @@ for id, table in enumerate([pyrolite_elastic_s_speed, pyrolite_anelastic_s_speed
     axes[id].set_ylabel("Depth [m]")
     axes[id].grid()
 
-axes[1].set_ylabel("")
-axes[1].set_yticklabels("")
+for ax in axes[1:]:
+    ax.set_ylabel("")
+    ax.set_yticklabels("")
 
 axes[0].text(0.5, 1.05, s="Elastic", transform=axes[0].transAxes,
              ha="center", va="center",
@@ -170,11 +204,11 @@ axes[0].text(0.5, 1.05, s="Elastic", transform=axes[0].transAxes,
 axes[1].text(0.5, 1.05, s="With Anelastic Correction",
              ha="center", va="center",
              transform=axes[1].transAxes, bbox=dict(facecolor=(1.0, 1.0, 0.7)))
-axes[1].text(0.5, 1.05, s="Linearised With Anelastic Correction",
+axes[2].text(0.5, 1.05, s="Linearised With Anelastic Correction",
              ha="center", va="center",
-             transform=axes[1].transAxes, bbox=dict(facecolor=(1.0, 1.0, 0.7)))
+             transform=axes[2].transAxes, bbox=dict(facecolor=(1.0, 1.0, 0.7)))
 
-fig.colorbar(img[-1], ax=axes[0], cax=fig.add_axes([0.88,
+fig.colorbar(img[-1], ax=axes[0], cax=fig.add_axes([0.84,
              0.1, 0.02, 0.8]), orientation="vertical", label="Shear-Wave Speed [m/s]")
 
 
@@ -183,7 +217,7 @@ fig.colorbar(img[-1], ax=axes[0], cax=fig.add_axes([0.88,
 plt.close(2)
 fig_2 = plt.figure(num=2)
 ax_2 = fig_2.add_subplot(111)
-index = 130
+index = 150
 ax_2.plot(pyrolite_anelastic_s_speed.get_y(),
           pyrolite_anelastic_s_speed.get_vals()[index, :], color="blue", label="With Anelastic Correction")
 ax_2.plot(pyrolite_anelastic_s_speed.get_y(),

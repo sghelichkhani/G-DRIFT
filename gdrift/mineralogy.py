@@ -1,24 +1,10 @@
 import numpy
 from .profile import AbstractProfile
-from .profile import AbstractProfile
 from .io import load_dataset
 from scipy.interpolate import RectBivariateSpline
 from scipy.optimize import minimize_scalar
 from scipy.spatial import cKDTree
-from scipy.spatial import cKDTree
 from numbers import Number
-from typing import Optional, Tuple, Union, Dict
-import numpy as np
-
-# Default regular range for gradients
-# This will be used in regularise_thermodynamic_table
-# if nothing is provided
-default_regular_range = {
-    "v_s": (-np.inf, 0.0),
-    "v_p": (-np.inf, 0.0),
-    "rho": (-np.inf, 0.0),
-}
-
 from typing import Optional, Tuple, Union, Dict
 import numpy as np
 
@@ -182,7 +168,6 @@ class ThermodynamicModel(object):
             self._tables["rho"].get_x(),
             self._tables["rho"].get_y(),
             self._tables["rho"].get_vals()).ev(depth, temperature)
-            self._tables["rho"].get_vals()).ev(depth, temperature)
 
     def compute_swave_speed(self):
         return type(self._tables["shear_mod"])(
@@ -314,7 +299,6 @@ def compute_swave_speed(shear_modulus, density):
 
 
 def compute_pwave_speed(bulk_modulus: Number, shear_modulus: Number, density: Number) -> Number:
-def compute_pwave_speed(bulk_modulus: Number, shear_modulus: Number, density: Number) -> Number:
     """Calculate the P-wave (primary wave) speed in a material based on its bulk modulus,
     shear modulus, and density. Inputs can be floats or numpy arrays of the same size.
 
@@ -338,7 +322,6 @@ def compute_pwave_speed(bulk_modulus: Number, shear_modulus: Number, density: Nu
     """
     # making sure that input is either array or float
     is_either_float_or_array(bulk_modulus, shear_modulus, density)
-
 
     return numpy.sqrt(
         numpy.divide(
@@ -371,13 +354,6 @@ def derive_then_integrate(table: Table, temperature_profile: AbstractProfile, re
 
     # Getting the name of the table
     key = table._name
-    if "v_s" in key:
-        range_label = "v_s"
-    elif "v_p" in key:
-        range_label = "v_p"
-    else:
-        range_label = key
-
     # Getting the depths and temperatures
     depths = table.get_x()
     temperatures = table.get_y()
@@ -392,7 +368,7 @@ def derive_then_integrate(table: Table, temperature_profile: AbstractProfile, re
     dV_dT = np.gradient(table.get_vals(), depths, temperatures, axis=(0, 1))[1]
 
     # Finding the regular range of values (No positive jumps, no high negative jumps)
-    within_range = np.logical_and(dV_dT < regular_range[range_label][1], dV_dT > regular_range[range_label][0])
+    within_range = np.logical_and(dV_dT < regular_range[key][1], dV_dT > regular_range[key][0])
 
     # building a tree out of the regular values
     my_tree = cKDTree(np.column_stack((depths_x[within_range].flatten(), temperatures_x[within_range].flatten())))
@@ -427,7 +403,7 @@ def regularise_thermodynamic_table(slb_pyrolite: ThermodynamicModel, temperature
         temperature_profile (AbstractProfile): The temperature profile to be used for regularisation. This is supposed to
             be a 1D profile of average temperature profiles.
         regular_range (Dict[str, Tuple], optional): Dictionary specifying the regularisation range for each
-            parameter. Defaults to `default_regular_range`.
+            parameter. Defaults to `gdrift.mineralogy.default_regular_range`.
 
     Returns:
         RegularisedThermodynamicModel: A regularised thermodynamic model with precomputed tables for S-wave
@@ -457,21 +433,24 @@ def regularise_thermodynamic_table(slb_pyrolite: ThermodynamicModel, temperature
         """
 
         def __init__(self, *args, **kwargs):
+            # Inherit properties from the original model
             super().__init__(*args, **kwargs)
-            self.regular_tables = regular_tables
-            self._tables["rho"] = Table(self.get_depths(), self.get_temperatures(), self.regular_tables["rho"], name="rho")
+            self._tables["rho"] = Table(self.get_depths(), self.get_temperatures(), regular_tables["rho"], name="rho")
 
         def compute_swave_speed(self):
             """
             Returns the regularised S-wave speed as a `Table` object.
             """
-            return Table(self.get_depths(), self.get_temperatures(), self.regular_tables["v_s"], name="v_s")
+            return Table(self.get_depths(), self.get_temperatures(), regular_tables["v_s"], name="v_s")
 
         def compute_pwave_speed(self):
             """
             Returns the regularised P-wave speed as a `Table` object.
             """
-            return Table(self.get_depths(), self.get_temperatures(), self.regular_tables["v_p"], name="v_p")
+            return Table(self.get_depths(), self.get_temperatures(), regular_tables["v_p"], name="v_p")
 
-    # return RegularisedThermodynamicModel(slb_pyrolite, regular_tables)
-    return RegularisedThermodynamicModel(slb_pyrolite.model, slb_pyrolite.composition, slb_pyrolite.get_temperatures(), slb_pyrolite.get_depths())
+    return RegularisedThermodynamicModel(
+        slb_pyrolite.model,
+        slb_pyrolite.composition,
+        slb_pyrolite.get_temperatures(),
+        slb_pyrolite.get_depths())
