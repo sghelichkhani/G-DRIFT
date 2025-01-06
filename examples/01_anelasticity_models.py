@@ -33,13 +33,11 @@ def build_solidus():
         my_depths.extend(dpths)
         my_solidus.extend(solidus_model.at_depth(dpths))
 
-    # Avoding unnecessary extrapolation by setting the solidus temperature at maximum depth
-    my_depths.extend([3000e3])
-    my_solidus.extend([solidus_model.at_depth(dpths[-1])])
-
+    # Since we might have values outside the range of the solidus curve, we are better off with extrapolating
     ghelichkhan_et_al = SplineProfile(
         depth=np.asarray(my_depths),
         value=np.asarray(my_solidus),
+        extrapolate=True,
         name="Ghelichkhan et al 2021")
 
     return ghelichkhan_et_al
@@ -111,22 +109,46 @@ cammarano_q_model = "Q1"  # choose model from cammarano et al., 2003
 anelasticity = build_anelasticity_model(solidus_ghelichkhan, q_profile=cammarano_q_model)
 anelastic_slb_pyrolite = gdrift.apply_anelastic_correction(
     slb_pyrolite, anelasticity)
+
 pyrolite_anelastic_s_speed = anelastic_slb_pyrolite.compute_swave_speed()
 pyrolite_anelastic_p_speed = anelastic_slb_pyrolite.compute_pwave_speed()
+
+# A temperautre profile representing the mantle average temperature
+# This is used to anchor the regularised thermodynamic table (we make sure the seismic speeds are the same at those temperature for the regularised and unregularised table)
+temperature_spline = gdrift.SplineProfile(
+    depth=np.asarray([0., 500e3, 2700e3, 3000e3]),
+    value=np.asarray([300, 1000, 3000, 4000])
+)
+
+
+linear_slb_pyrolite = gdrift.mineralogy.regularise_thermodynamic_table(
+    slb_pyrolite, temperature_spline,
+    regular_range={"v_s": [-1.0, 0], "v_p": [-1.0, 0.], "rho": [-0.5, 0.]}
+)
+
+# Regularising the table
+linear_anelastic_slb_pyrolite = gdrift.apply_anelastic_correction(
+    linear_slb_pyrolite, anelasticity
+)
+
+# linearised seismic speeds
+linear_pyrolite_anelastic_s_speed = linear_anelastic_slb_pyrolite.compute_swave_speed()
+linear_pyrolite_anelastic_p_speed = linear_anelastic_slb_pyrolite.compute_pwave_speed()
 
 # contour lines to plot
 cntr_lines = np.linspace(4000, 7000, 20)
 
 plt.close("all")
-fig, axes = plt.subplots(ncols=2)
-axes[0].set_position([0.1, 0.1, 0.35, 0.8])
-axes[1].set_position([0.5, 0.1, 0.35, 0.8])
+fig, axes = plt.subplots(figsize=(12, 8), ncols=3)
+axes[0].set_position([0.05, 0.1, 0.25, 0.8])
+axes[1].set_position([0.35, 0.1, 0.25, 0.8])
+axes[2].set_position([0.65, 0.1, 0.25, 0.8])
 # Getting the coordinates
 depths_x, temperatures_x = np.meshgrid(
     slb_pyrolite.get_depths(), slb_pyrolite.get_temperatures(), indexing="ij")
 img = []
 
-for id, table in enumerate([pyrolite_elastic_s_speed, pyrolite_anelastic_s_speed]):
+for id, table in enumerate([pyrolite_elastic_s_speed, pyrolite_anelastic_s_speed, linear_pyrolite_anelastic_s_speed]):
     img.append(axes[id].contourf(
         temperatures_x,
         depths_x,
@@ -148,6 +170,10 @@ axes[0].text(0.5, 1.05, s="Elastic", transform=axes[0].transAxes,
 axes[1].text(0.5, 1.05, s="With Anelastic Correction",
              ha="center", va="center",
              transform=axes[1].transAxes, bbox=dict(facecolor=(1.0, 1.0, 0.7)))
+axes[1].text(0.5, 1.05, s="Linearised With Anelastic Correction",
+             ha="center", va="center",
+             transform=axes[1].transAxes, bbox=dict(facecolor=(1.0, 1.0, 0.7)))
+
 fig.colorbar(img[-1], ax=axes[0], cax=fig.add_axes([0.88,
              0.1, 0.02, 0.8]), orientation="vertical", label="Shear-Wave Speed [m/s]")
 
@@ -157,9 +183,11 @@ fig.colorbar(img[-1], ax=axes[0], cax=fig.add_axes([0.88,
 plt.close(2)
 fig_2 = plt.figure(num=2)
 ax_2 = fig_2.add_subplot(111)
-index = 100
+index = 130
 ax_2.plot(pyrolite_anelastic_s_speed.get_y(),
           pyrolite_anelastic_s_speed.get_vals()[index, :], color="blue", label="With Anelastic Correction")
+ax_2.plot(pyrolite_anelastic_s_speed.get_y(),
+          linear_pyrolite_anelastic_s_speed.get_vals()[index, :], color="green", label="Linear Anelastic Model")
 ax_2.plot(pyrolite_anelastic_s_speed.get_y(),
           pyrolite_elastic_s_speed.get_vals()[index, :], color="red", label="Elastic Model")
 ax_2.vlines(
@@ -184,9 +212,10 @@ plt.show()
 plt.close(3)
 fig_3 = plt.figure(num=3)
 ax_3 = fig_3.add_subplot(111)
-index = 100
 ax_3.plot(pyrolite_anelastic_p_speed.get_y(),
           pyrolite_anelastic_p_speed.get_vals()[index, :], color="blue", label="With Anelastic Correction")
+ax_3.plot(pyrolite_anelastic_p_speed.get_y(),
+          linear_pyrolite_anelastic_p_speed.get_vals()[index, :], color="green", label="Linear Anelastic Model")
 ax_3.plot(pyrolite_anelastic_p_speed.get_y(),
           pyrolite_elastic_p_speed.get_vals()[index, :], color="red", label="Elastic Model")
 ax_3.vlines(
