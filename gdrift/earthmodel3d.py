@@ -181,8 +181,7 @@ class SeismicEarthModel(EarthModel3D):
     def check_extent(self, x, y, z, tolerance=1e-3):
         radius = np.sqrt(x**2 + y**2 + z**2)
 
-        return (all(radius >= REVEALSeismicModel3D.rmin - tolerance)
-                and all(radius <= REVEALSeismicModel3D.rmax + tolerance))
+        return (all(radius >= REVEALSeismicModel3D.rmin - tolerance) and all(radius <= REVEALSeismicModel3D.rmax + tolerance))
 
     def _interpolate_to_points(self, label, coordinates, k=20):
         # Making sure we have a list of items
@@ -227,6 +226,7 @@ class SeismicEarthModel(EarthModel3D):
 
         for key in data.keys() if len(labels) == 1 else labels:
             self.add_quantity(key, data[key])
+        pass
 
 
 class REVEALSeismicModel3D(EarthModel3D):
@@ -243,25 +243,21 @@ class REVEALSeismicModel3D(EarthModel3D):
     def check_extent(self, x, y, z, tolerance=1e-3):
         radius = np.sqrt(x**2 + y**2 + z**2)
 
-        return (all(radius >= REVEALSeismicModel3D.rmin - tolerance)
-                and all(radius <= REVEALSeismicModel3D.rmax + tolerance))
+        return all(radius >= REVEALSeismicModel3D.rmin - tolerance) and all(radius <= REVEALSeismicModel3D.rmax + tolerance)
 
     def _interpolate_to_points(self, label, coordinates, k=8):
         if not self.tree_is_created:
             self.tree = cKDTree(self.coordinates)
 
         dists, inds = self.tree.query(coordinates, k=k)
-        safe_dists = np.where(dists < REVEALSeismicModel3D.minimum_distance,
-                              dists, REVEALSeismicModel3D.minimum_distance)
+        safe_dists = np.where(dists < REVEALSeismicModel3D.minimum_distance, dists, REVEALSeismicModel3D.minimum_distance)
         replace_flg = dists[:, 0] < REVEALSeismicModel3D.minimum_distance
 
         if len(self.available_fields[label].shape) > 1:
-            ret = np.einsum("i, ik -> ik", np.sum(1 / safe_dists, axis=1), np.einsum(
-                "ij, ijk -> ik", 1 / safe_dists, self.available_fields[label][inds]))
+            ret = np.einsum("i, ik -> ik", np.sum(1 / safe_dists, axis=1), np.einsum("ij, ijk -> ik", 1 / safe_dists, self.available_fields[label][inds]))
             ret[replace_flg, :] = self.available_fields[label][inds[replace_flg, 0], :]
         else:
-            ret = np.einsum("ij, ij->i", 1 / safe_dists,
-                            self.available_fields[label][inds]) / np.sum(1 / safe_dists, axis=1)
+            ret = np.einsum("ij, ij->i", 1 / safe_dists, self.available_fields[label][inds]) / np.sum(1 / safe_dists, axis=1)
             ret[replace_flg] = self.available_fields[label][inds[replace_flg, 0]]
         return ret
 

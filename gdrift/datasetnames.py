@@ -5,7 +5,7 @@ _TYPE_THERMODYNAMIC_MODEL = "Thermodynamic Model of Mantle Rocks"
 _TYPE_TOMOGRAPHY_MODEL = "Seismic Tomography Model"
 
 # What utility should be used for what
-_UTIL_SOLIDUS = "SolidusProfileFromFile"
+_UTIL_SOLIDUS = "RadialEarthModelFromFile"
 _UTIL_PREM = "PreliminaryRefEarthModel"
 _UTIL_THERMODYNAMIC = "ThermodynamicModel"
 

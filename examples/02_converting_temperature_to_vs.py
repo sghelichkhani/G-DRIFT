@@ -7,8 +7,7 @@ num_temperatures = 1000
 
 # Generate random temperatures between 300 and 400
 temperatures = np.random.uniform(500, 3500, num_temperatures)
-depths = (np.ones_like(temperatures) *
-          np.random.uniform(300e3, 1500e3, num_temperatures))
+depths = np.ones_like(temperatures) * np.random.uniform(300e3, 1500e3, num_temperatures)
 
 # Thermodynamic model
 slb_pyrolite = gdrift.ThermodynamicModel("SLB_16", "pyrolite")
