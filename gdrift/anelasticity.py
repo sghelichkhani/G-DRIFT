@@ -162,13 +162,12 @@ def apply_anelastic_correction(thermo_model, anelastic_model):
             corrected_vals = (
                 swave_speed_table.get_vals() * (1 - 0.5 / numpy.tan(anelastic_model.a(depths_x) * numpy.pi / 2) / Q_matrix)
             )
-
             #
             return type(swave_speed_table)(
                 x=swave_speed_table.get_x(),
                 y=swave_speed_table.get_y(),
                 vals=corrected_vals,
-                name=f"{swave_speed_table.get_name()}_anelastically_corrected"
+                name=f"{swave_speed_table.get_name()}"
             )
 
         def compute_pwave_speed(self):
@@ -216,7 +215,7 @@ def apply_anelastic_correction(thermo_model, anelastic_model):
                 x=pwave_speed_table.get_x(),
                 y=pwave_speed_table.get_y(),
                 vals=corrected_vals,
-                name=f"{pwave_speed_table.get_name()}_anelastically_corrected"
+                name=f"{pwave_speed_table.get_name()}"
             )
 
     return ThermodynamicModelPrime(
